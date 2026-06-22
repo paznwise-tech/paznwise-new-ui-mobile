@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Paznwise",
+    "slug": "paznwise",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0D1B2A",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.paznwise.app"
+    },
+    "android": {
+      "package": "com.paznwise.app",
+      "statusBarColor": "#0D1B2A"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-asset"
+    ],
+    "scheme": "paznwise",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
