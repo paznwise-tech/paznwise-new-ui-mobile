@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Modal } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
+import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
 import { StarRow } from '@/components/StarRow';
 import { useAppData, useCart, useFavorites } from '@/context/AppContext';
@@ -18,6 +18,7 @@ export default function ArtworkDetail() {
 
   const item = artworks.find(a => a.id === Number(id)) ?? artworks[0];
   const [tab, setTab] = useState<'about' | 'artist' | 'details'>('about');
+  const [showCartModal, setShowCartModal] = useState(false);
 
   const liked = isFavorite(item.id);
   const inCart = cart.some(c => c.id === item.id);
@@ -31,6 +32,7 @@ export default function ArtworkDetail() {
       router.push('/cart');
     } else {
       addToCart(item);
+      setShowCartModal(true);
     }
   }, [inCart, item, addToCart]);
 
@@ -161,6 +163,50 @@ export default function ArtworkDetail() {
           <GoldButton label="Buy Now" onPress={handleBuyNow} size="md" />
         </View>
       </View>
+
+      {/* Added to Cart Success Modal */}
+      <Modal
+        visible={showCartModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCartModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalGoldLine} />
+            <Text style={styles.modalSuccessIcon}>✓</Text>
+            <Text style={styles.modalHeading}>Added to Cart</Text>
+            <Text style={styles.modalSubheading}>This original work has been reserved for you.</Text>
+            
+            <View style={styles.modalItem}>
+              <Image source={{ uri: item.img }} style={styles.modalItemImg} contentFit="cover" />
+              <View style={styles.modalItemBody}>
+                <Text style={styles.modalItemTitle} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.modalItemArtist}>{item.artist}</Text>
+                <Text style={styles.modalItemPrice}>₹{item.price.toLocaleString('en-IN')}</Text>
+              </View>
+            </View>
+
+            <View style={styles.modalActions}>
+              <GoldButton
+                label="View Cart"
+                onPress={() => {
+                  setShowCartModal(false);
+                  router.push('/cart');
+                }}
+                fullWidth
+                size="md"
+              />
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setShowCartModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Continue Browsing</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -206,4 +252,19 @@ const styles = StyleSheet.create({
   bottomPrice: { ...Typography.bodyBold, fontSize: 20, color: Colors.gold },
   bottomShipping: { ...Typography.caption, fontSize: 11 },
   bottomBtns: { flexDirection: 'row', gap: Spacing.sm },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(13,27,42,0.85)', justifyContent: 'center', alignItems: 'center', padding: Spacing.lg },
+  modalContent: { width: '100%', maxWidth: 340, backgroundColor: Colors.bgCard, borderRadius: Radius.xl, padding: Spacing.lg, alignItems: 'center', borderWidth: 1, borderColor: Colors.borderGold, ...Shadow.card },
+  modalGoldLine: { width: 40, height: 3, backgroundColor: Colors.gold, borderRadius: 2, marginBottom: Spacing.md },
+  modalSuccessIcon: { fontSize: 32, color: Colors.gold, marginBottom: Spacing.sm, fontWeight: 'bold' },
+  modalHeading: { ...Typography.heading, fontSize: 20, marginBottom: 4 },
+  modalSubheading: { ...Typography.caption, fontSize: 12, color: Colors.creamDim, textAlign: 'center', marginBottom: Spacing.lg },
+  modalItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.bgInput, borderRadius: Radius.md, padding: Spacing.sm, width: '100%', marginBottom: Spacing.lg, borderWidth: 1, borderColor: Colors.border },
+  modalItemImg: { width: 60, height: 60, borderRadius: Radius.sm },
+  modalItemBody: { flex: 1, gap: 2 },
+  modalItemTitle: { ...Typography.bodySemibold, fontSize: 14, color: Colors.cream },
+  modalItemArtist: { ...Typography.caption, fontSize: 11, color: Colors.creamDim },
+  modalItemPrice: { ...Typography.bodyBold, fontSize: 14, color: Colors.gold },
+  modalActions: { width: '100%', gap: Spacing.sm },
+  modalCancelBtn: { alignItems: 'center', paddingVertical: Spacing.sm },
+  modalCancelText: { ...Typography.caption, fontSize: 13, color: Colors.gold },
 });
