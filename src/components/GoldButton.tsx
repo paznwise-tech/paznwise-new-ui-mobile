@@ -1,4 +1,5 @@
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View } from 'react-native';
+import React from 'react';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Radius, Spacing } from '@/constants/theme';
 
@@ -12,7 +13,7 @@ interface GoldButtonProps {
   fullWidth?: boolean;
 }
 
-export function GoldButton({
+export const GoldButton = React.memo(function GoldButton({
   label, onPress, variant = 'filled', size = 'md',
   loading, disabled, fullWidth,
 }: GoldButtonProps) {
@@ -49,7 +50,10 @@ export function GoldButton({
         style={[styles.outline, { height }, fullWidth && styles.full, { opacity: disabled ? 0.5 : 1 }]}
         activeOpacity={0.8}
       >
-        <Text style={[styles.outlineLabel, { fontSize }]}>{label}</Text>
+        {loading
+          ? <ActivityIndicator color={Colors.gold} size="small" />
+          : <Text style={[styles.outlineLabel, { fontSize }]}>{label}</Text>
+        }
       </TouchableOpacity>
     );
   }
@@ -59,7 +63,7 @@ export function GoldButton({
       <Text style={[styles.ghost, { fontSize }]}>{label}</Text>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrapper: {

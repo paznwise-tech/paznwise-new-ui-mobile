@@ -1,10 +1,13 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
+import { useUser } from '@/context/AppContext';
 
 export default function OTP() {
+  const { name, email } = useLocalSearchParams<{ name: string; email: string }>();
+  const { login } = useUser();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const refs = useRef<(TextInput | null)[]>([]);
 
@@ -14,6 +17,12 @@ export default function OTP() {
     setOtp(next);
     if (text && idx < 5) refs.current[idx + 1]?.focus();
   };
+
+  const handleVerify = useCallback(() => {
+    login(name || 'Amit Kumar', email || 'amit@example.com');
+    alert('Account created and verified successfully!');
+    router.replace('/(tabs)');
+  }, [name, email, login]);
 
   return (
     <View style={styles.container}>
@@ -49,7 +58,7 @@ export default function OTP() {
 
       <GoldButton
         label="Verify & Continue"
-        onPress={() => router.replace('/(tabs)')}
+        onPress={handleVerify}
         size="lg"
         fullWidth
         disabled={otp.some(d => !d)}

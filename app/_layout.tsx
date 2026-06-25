@@ -17,6 +17,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 // Note: react-native-reanimated removed — not required for this app
 import { Colors } from '@/constants/theme';
+import { AppProvider } from '@/context/AppContext';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -39,20 +40,22 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <StatusBar style="light" backgroundColor={Colors.bg} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.bg } }}>
-        <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
-        <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
-        <Stack.Screen name="artwork/[id]" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="artist/[id]" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="book/[id]" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="cart" options={{ animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="messages" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="my-bookings" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="sell" options={{ animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="register-artist" options={{ animation: 'slide_from_bottom' }} />
-      </Stack>
-    </GestureHandlerRootView>
+    <AppProvider>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: Colors.bg }}>
+        <StatusBar style="light" backgroundColor={Colors.bg} />
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.bg } }}>
+          <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
+          <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+          <Stack.Screen name="artwork/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="artist/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="book/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="cart" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="messages" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="my-bookings" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="sell" options={{ animation: 'slide_from_bottom' }} />
+          <Stack.Screen name="register-artist" options={{ animation: 'slide_from_bottom' }} />
+        </Stack>
+      </GestureHandlerRootView>
+    </AppProvider>
   );
 }

@@ -1,7 +1,8 @@
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Colors, Typography } from '@/constants/theme';
 
-export function StarRow({ rating, count }: { rating: number; count: number }) {
+export const StarRow = React.memo(function StarRow({ rating, count }: { rating: number; count: number }) {
   return (
     <View style={styles.row}>
       <Text style={styles.star}>★</Text>
@@ -9,7 +10,7 @@ export function StarRow({ rating, count }: { rating: number; count: number }) {
       <Text style={styles.count}>({count})</Text>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 3 },

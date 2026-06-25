@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
+import { useUser, useAppData } from '@/context/AppContext';
 
 const PERFORMER_TYPES = [
   { key: 'painter',    label: 'Visual Artist',    emoji: '🎨', from: '#E65100', to: '#FF7043' },
@@ -21,7 +22,29 @@ const PERFORMER_TYPES = [
 ];
 
 export default function RegisterArtist() {
+  const { user, updateUserProfile } = useUser();
+  const { addPerformer } = useAppData();
   const [selected, setSelected] = useState<string | null>(null);
+
+  const handleRegister = useCallback(() => {
+    if (!selected) return;
+    const item = PERFORMER_TYPES.find(p => p.key === selected);
+    const typeLabel = item?.label || 'Live Performer';
+
+    updateUserProfile({ isPerformer: true });
+
+    addPerformer({
+      name: user.name || 'New Performer',
+      type: typeLabel,
+      price: '₹6,500+',
+      rating: 5.0,
+      reviews: 1,
+      img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop',
+    });
+
+    alert(`Congratulations! You are now registered as a ${typeLabel}.`);
+    router.replace('/(tabs)');
+  }, [selected, user.name, updateUserProfile, addPerformer]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -64,7 +87,7 @@ export default function RegisterArtist() {
       <View style={styles.bottomBar}>
         <GoldButton
           label="Continue →"
-          onPress={() => router.push('/sell')}
+          onPress={handleRegister}
           size="lg" fullWidth
           disabled={!selected}
         />

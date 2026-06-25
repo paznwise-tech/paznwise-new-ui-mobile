@@ -4,6 +4,8 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
+import { useUser, useBookings, useFavorites } from '@/context/AppContext';
+import { useCallback, useMemo } from 'react';
 
 const MENU_ITEMS = [
   { icon: '🖼', label: 'My Orders',        sub: 'Track your artwork purchases',    route: '/cart' },
@@ -16,7 +18,24 @@ const MENU_ITEMS = [
 ];
 
 export default function Profile() {
-  const isLoggedIn = false; // TODO: connect auth context
+  const { user, logout } = useUser();
+  const { bookings } = useBookings();
+  const { favorites } = useFavorites();
+
+  const isLoggedIn = user.isLoggedIn;
+
+  const roleText = useMemo(() => {
+    const roles: string[] = [];
+    if (user.isArtist) roles.push('Artist');
+    if (user.isPerformer) roles.push('Performer');
+    if (roles.length === 0) roles.push('Collector');
+    return roles.join(' & ');
+  }, [user.isArtist, user.isPerformer]);
+
+  const handleSignOut = useCallback(() => {
+    logout();
+    alert('Signed out successfully.');
+  }, [logout]);
 
   if (!isLoggedIn) {
     return (
@@ -27,7 +46,7 @@ export default function Profile() {
             <View style={styles.guestDecorInner} />
           </View>
           <Text style={styles.guestTitle}>Your Profile</Text>
-          <Text style={styles.guestSub}>Sign in to access your collection,{'\n'}bookings and messages</Text>
+          <Text style={styles.guestSub}>Sign in to access your collection,{"\n"}bookings and messages</Text>
           <TouchableOpacity style={styles.signInBtn} onPress={() => router.push('/(auth)/login')}>
             <LinearGradient colors={['#E8C97A', '#C9A84C']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.signInGradient}>
               <Text style={styles.signInText}>Sign In</Text>
@@ -67,10 +86,14 @@ export default function Profile() {
             style={styles.avatar}
             contentFit="cover"
           />
-          <Text style={styles.name}>Amit Kumar</Text>
-          <Text style={styles.email}>amit@example.com · Buyer</Text>
+          <Text style={styles.name}>{user.name}</Text>
+          <Text style={styles.email}>{user.email} · {roleText}</Text>
           <View style={styles.stats}>
-            {[['12', 'Artworks'], ['3', 'Bookings'], ['5', 'Events']].map(([v, l]) => (
+            {[
+              [user.isArtist ? '1' : '0', 'Listed'],
+              [bookings.length.toString(), 'Bookings'],
+              [favorites.length.toString(), 'Liked'],
+            ].map(([v, l]) => (
               <View key={l} style={styles.stat}>
                 <Text style={styles.statVal}>{v}</Text>
                 <Text style={styles.statLabel}>{l}</Text>
@@ -97,7 +120,7 @@ export default function Profile() {
           ))}
         </View>
 
-        <TouchableOpacity style={styles.logout}>
+        <TouchableOpacity style={styles.logout} onPress={handleSignOut}>
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>

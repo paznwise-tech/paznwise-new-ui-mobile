@@ -1,3 +1,4 @@
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing } from '@/constants/theme';
 
@@ -7,7 +8,7 @@ interface SectionHeaderProps {
   onSeeAll?: () => void;
 }
 
-export function SectionHeader({ title, subtitle, onSeeAll }: SectionHeaderProps) {
+export const SectionHeader = React.memo(function SectionHeader({ title, subtitle, onSeeAll }: SectionHeaderProps) {
   return (
     <View style={styles.container}>
       <View style={styles.left}>
@@ -24,7 +25,7 @@ export function SectionHeader({ title, subtitle, onSeeAll }: SectionHeaderProps)
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

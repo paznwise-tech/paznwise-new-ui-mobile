@@ -1,24 +1,58 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ArtCard } from '@/components/ArtCard';
-import { ARTWORKS, CATEGORIES } from '@/constants/data';
+import { CATEGORIES } from '@/constants/data';
+import { useAppData } from '@/context/AppContext';
+import { Artwork } from '@/types';
 
 const SORT_OPTIONS = ['Newest', 'Price ↑', 'Price ↓', 'Top Rated'];
 
 export default function Browse() {
+  const { artworks } = useAppData();
   const [q, setQ]             = useState('');
   const [activeCategory, setCat] = useState('All');
   const [sort, setSort]       = useState('Newest');
   const [showSort, setShowSort] = useState(false);
 
-  const filtered = ARTWORKS.filter(a => {
-    const matchQ = !q || a.title.toLowerCase().includes(q.toLowerCase()) || a.artist.toLowerCase().includes(q.toLowerCase());
-    const matchCat = activeCategory === 'All' || a.category === activeCategory;
-    return matchQ && matchCat;
-  });
+  const filtered = useMemo(() => {
+    let result = artworks.filter(a => {
+      const matchQ = !q || a.title.toLowerCase().includes(q.toLowerCase()) || a.artist.toLowerCase().includes(q.toLowerCase());
+      const matchCat = activeCategory === 'All' || a.category === activeCategory;
+      return matchQ && matchCat;
+    });
+
+    if (sort === 'Price ↑') {
+      result = [...result].sort((a, b) => a.price - b.price);
+    } else if (sort === 'Price ↓') {
+      result = [...result].sort((a, b) => b.price - a.price);
+    } else if (sort === 'Top Rated') {
+      result = [...result].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    } else {
+      // Newest (default reverse array to show newly added items first)
+      result = [...result];
+    }
+    return result;
+  }, [artworks, q, activeCategory, sort]);
+
+  const handleArtPress = useCallback((id: number) => {
+    router.push(`/artwork/${id}` as any);
+  }, []);
+
+  const renderArtItem = useCallback(({ item }: { item: Artwork }) => (
+    <ArtCard item={item} onPress={() => handleArtPress(item.id)} />
+  ), [handleArtPress]);
+
+  const renderCategoryItem = useCallback(({ item }: { item: typeof CATEGORIES[0] }) => (
+    <TouchableOpacity
+      style={[styles.catChip, activeCategory === item.label && { backgroundColor: item.color + '22', borderColor: item.color }]}
+      onPress={() => setCat(item.label)}
+    >
+      <Text style={[styles.catText, activeCategory === item.label && { color: item.color }]}>{item.label}</Text>
+    </TouchableOpacity>
+  ), [activeCategory]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -62,14 +96,8 @@ export default function Browse() {
           horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.catList}
           keyExtractor={i => i.label}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.catChip, activeCategory === item.label && { backgroundColor: item.color + '22', borderColor: item.color }]}
-              onPress={() => setCat(item.label)}
-            >
-              <Text style={[styles.catText, activeCategory === item.label && { color: item.color }]}>{item.label}</Text>
-            </TouchableOpacity>
-          )}
+          renderItem={renderCategoryItem}
+          initialNumToRender={7}
         />
       </SafeAreaView>
 
@@ -81,9 +109,11 @@ export default function Browse() {
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
         keyExtractor={i => String(i.id)}
-        renderItem={({ item }) => (
-          <ArtCard item={item} onPress={() => router.push(`/artwork/${item.id}` as any)} />
-        )}
+        renderItem={renderArtItem}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={4}
+        removeClippedSubviews={true}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No artworks found</Text>

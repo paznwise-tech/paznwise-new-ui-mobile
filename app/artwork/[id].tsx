@@ -1,20 +1,43 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
+import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
 import { StarRow } from '@/components/StarRow';
-import { ARTWORKS } from '@/constants/data';
+import { useAppData, useCart, useFavorites } from '@/context/AppContext';
 
 const { width } = Dimensions.get('window');
 
 export default function ArtworkDetail() {
   const { id } = useLocalSearchParams();
-  const item = ARTWORKS.find(a => a.id === Number(id)) ?? ARTWORKS[0];
-  const [liked, setLiked] = useState(false);
+  const { artworks } = useAppData();
+  const { cart, addToCart } = useCart();
+  const { isFavorite, toggleFavorite } = useFavorites();
+
+  const item = artworks.find(a => a.id === Number(id)) ?? artworks[0];
   const [tab, setTab] = useState<'about' | 'artist' | 'details'>('about');
+
+  const liked = isFavorite(item.id);
+  const inCart = cart.some(c => c.id === item.id);
+
+  const handleLikePress = useCallback(() => {
+    toggleFavorite(item.id);
+  }, [item.id, toggleFavorite]);
+
+  const handleCartPress = useCallback(() => {
+    if (inCart) {
+      router.push('/cart');
+    } else {
+      addToCart(item);
+    }
+  }, [inCart, item, addToCart]);
+
+  const handleBuyNow = useCallback(() => {
+    addToCart(item);
+    router.push('/cart');
+  }, [item, addToCart]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -32,7 +55,7 @@ export default function ArtworkDetail() {
 
           {/* Actions */}
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.actionBtn} onPress={() => setLiked(!liked)}>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleLikePress}>
               <Text style={styles.actionIcon}>{liked ? '❤️' : '🤍'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.actionBtn}>
@@ -129,8 +152,13 @@ export default function ArtworkDetail() {
           <Text style={styles.bottomShipping}>Free shipping</Text>
         </View>
         <View style={styles.bottomBtns}>
-          <GoldButton label="Add to Cart" onPress={() => {}} variant="outline" size="md" />
-          <GoldButton label="Buy Now" onPress={() => {}} size="md" />
+          <GoldButton
+            label={inCart ? 'Go to Cart' : 'Add to Cart'}
+            onPress={handleCartPress}
+            variant="outline"
+            size="md"
+          />
+          <GoldButton label="Buy Now" onPress={handleBuyNow} size="md" />
         </View>
       </View>
     </View>

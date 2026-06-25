@@ -3,9 +3,10 @@
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
+    "jsx": "react-native",
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*"
       ]
     }
   },

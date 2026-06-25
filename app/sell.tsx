@@ -1,13 +1,55 @@
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
+import { useUser, useAppData } from '@/context/AppContext';
 
 const STEPS = ['Profile', 'Terms & Fee', 'Artwork', 'Review'];
 
 export default function Sell() {
+  const { updateUserProfile } = useUser();
+  const { addArtwork } = useAppData();
+
+  const [displayName, setDisplayName] = useState('');
+  const [location, setLocation]       = useState('');
+  const [artStyle, setArtStyle]       = useState('');
+  const [bio, setBio]                 = useState('');
+  const [selectedTag, setSelectedTag] = useState('Oil Painting');
+
+  const handleContinue = useCallback(() => {
+    if (!displayName || !location || !artStyle || !bio) {
+      alert('Please fill out all required fields');
+      return;
+    }
+
+    // Update user profile
+    updateUserProfile({
+      name: displayName,
+      isArtist: true,
+      location: location,
+    });
+
+    // Create a mock artwork under this new artist
+    addArtwork({
+      title: `${artStyle} Masterpiece`,
+      price: 15500,
+      artist: displayName,
+      location: location,
+      img: 'https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&h=600&fit=crop',
+      medium: selectedTag,
+      category: 'Paintings',
+      rating: 5.0,
+      reviews: 1,
+      tag: 'New'
+    });
+
+    alert('Congratulations! Your artist profile is set up and your first listing is live.');
+    router.replace('/(tabs)');
+  }, [displayName, location, artStyle, bio, selectedTag, updateUserProfile, addArtwork]);
+
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }}>
@@ -44,20 +86,44 @@ export default function Sell() {
         </LinearGradient>
 
         <View style={styles.form}>
-          {[
-            { label: 'Display Name *',   placeholder: 'e.g. Priya Sharma'            },
-            { label: 'City / Location *', placeholder: 'e.g. Mumbai, Maharashtra'     },
-            { label: 'Your Art Style *',  placeholder: 'e.g. Contemporary Oil Painter' },
-          ].map(f => (
-            <View key={f.label} style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>{f.label}</Text>
-              <TextInput placeholder={f.placeholder} placeholderTextColor={Colors.creamFaint} style={styles.input} />
-            </View>
-          ))}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Display Name *</Text>
+            <TextInput
+              value={displayName}
+              onChangeText={setDisplayName}
+              placeholder="e.g. Priya Sharma"
+              placeholderTextColor={Colors.creamFaint}
+              style={styles.input}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>City / Location *</Text>
+            <TextInput
+              value={location}
+              onChangeText={setLocation}
+              placeholder="e.g. Mumbai, Maharashtra"
+              placeholderTextColor={Colors.creamFaint}
+              style={styles.input}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Your Art Style *</Text>
+            <TextInput
+              value={artStyle}
+              onChangeText={setArtStyle}
+              placeholder="e.g. Contemporary Oil Painter"
+              placeholderTextColor={Colors.creamFaint}
+              style={styles.input}
+            />
+          </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Artist Bio *</Text>
             <TextInput
+              value={bio}
+              onChangeText={setBio}
               placeholder="Tell collectors your story — your background, inspiration, and technique…"
               placeholderTextColor={Colors.creamFaint}
               multiline numberOfLines={5}
@@ -70,8 +136,12 @@ export default function Sell() {
             <Text style={styles.fieldLabel}>Specialisations</Text>
             <View style={styles.tagRow}>
               {['Oil Painting', 'Watercolour', 'Acrylic', 'Sculpture', 'Digital Art', 'Photography'].map(tag => (
-                <TouchableOpacity key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
+                <TouchableOpacity
+                  key={tag}
+                  style={[styles.tag, selectedTag === tag && { borderColor: Colors.gold, backgroundColor: Colors.gold + '22' }]}
+                  onPress={() => setSelectedTag(tag)}
+                >
+                  <Text style={[styles.tagText, selectedTag === tag && { color: Colors.gold }]}>{tag}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -80,7 +150,7 @@ export default function Sell() {
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        <GoldButton label="Continue →" onPress={() => {}} size="lg" fullWidth />
+        <GoldButton label="Continue →" onPress={handleContinue} size="lg" fullWidth />
       </View>
     </View>
   );

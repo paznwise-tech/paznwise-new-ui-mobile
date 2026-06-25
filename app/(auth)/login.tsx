@@ -1,14 +1,26 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
+import { useUser } from '@/context/AppContext';
 
 export default function Login() {
+  const { login } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
+
+  const handleSignIn = useCallback(() => {
+    if (!email) {
+      alert('Please enter your email address');
+      return;
+    }
+    // Mock user login
+    login('Amit Kumar', email);
+    alert('Logged in successfully!');
+    router.replace('/(tabs)');
+  }, [email, login]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -63,7 +75,7 @@ export default function Login() {
           </TouchableOpacity>
         </View>
 
-        <GoldButton label="Sign In" onPress={() => router.replace('/(tabs)')} size="lg" fullWidth />
+        <GoldButton label="Sign In" onPress={handleSignIn} size="lg" fullWidth />
 
         {/* Divider */}
         <View style={styles.divider}>

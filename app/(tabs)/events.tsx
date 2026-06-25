@@ -71,7 +71,7 @@ export default function Events() {
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No events found</Text>
             <TouchableOpacity onPress={() => { setCat('All'); setCity('All Cities'); }}>
-              <Text style={{ color: Colors.gold, ...Typography.bodySemibold, fontSize: 14 }}>Clear filters</Text>
+              <Text style={{ ...Typography.bodySemibold, color: Colors.gold, fontSize: 14 }}>Clear filters</Text>
             </TouchableOpacity>
           </View>
         }

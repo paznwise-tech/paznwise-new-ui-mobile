@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
+import { useBookings } from '@/context/AppContext';
+import { Booking } from '@/types';
 
-const BOOKINGS = [
-  { id: 'BK-001', performer: 'Priya Sharma', type: 'Live Painting', date: 'Jul 24, 2026', venue: 'Taj Falaknuma', total: '₹9,350', status: 'confirmed', img: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=300&h=200&fit=crop' },
-  { id: 'BK-002', performer: 'Ananya Krishnan', type: 'Dance', date: 'Aug 15, 2026', venue: 'ITC Grand Chola', total: '₹11,800', status: 'pending', img: 'https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=300&h=200&fit=crop' },
-  { id: 'BK-003', performer: 'Kavya Menon', type: 'Mehendi', date: 'Jun 2, 2026', venue: 'Bandra, Mumbai', total: '₹4,200', status: 'completed', img: 'https://images.unsplash.com/photo-1583467875522-d48a15d26c55?w=300&h=200&fit=crop' },
+const INITIAL_BOOKINGS: Booking[] = [
+  { id: 'BK-001', performerId: 1, performerName: 'Priya Sharma', performerType: 'Live Painting', date: 'Jul 24, 2026', eventDetails: 'Taj Falaknuma', price: '₹9,350', status: 'confirmed', performerImg: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=300&h=200&fit=crop', createdAt: new Date().toISOString() },
+  { id: 'BK-002', performerId: 3, performerName: 'Ananya Krishnan', performerType: 'Dance', date: 'Aug 15, 2026', eventDetails: 'ITC Grand Chola', price: '₹11,800', status: 'pending', performerImg: 'https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=300&h=200&fit=crop', createdAt: new Date().toISOString() },
+  { id: 'BK-003', performerId: 4, performerName: 'Kavya Menon', performerType: 'Mehendi', date: 'Jun 2, 2026', eventDetails: 'Bandra, Mumbai', price: '₹4,200', status: 'completed', performerImg: 'https://images.unsplash.com/photo-1583467875522-d48a15d26c55?w=300&h=200&fit=crop', createdAt: new Date().toISOString() },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -21,13 +23,45 @@ const STATUS_COLORS: Record<string, string> = {
 const TABS = ['All', 'Upcoming', 'Completed'];
 
 export default function MyBookings() {
+  const { bookings } = useBookings();
   const [tab, setTab] = useState('All');
 
-  const filtered = BOOKINGS.filter(b => {
-    if (tab === 'Upcoming')  return b.status === 'confirmed' || b.status === 'pending';
-    if (tab === 'Completed') return b.status === 'completed';
-    return true;
-  });
+  const allBookings = useMemo(() => {
+    return [...bookings, ...INITIAL_BOOKINGS];
+  }, [bookings]);
+
+  const filtered = useMemo(() => {
+    return allBookings.filter(b => {
+      if (tab === 'Upcoming')  return b.status === 'confirmed' || b.status === 'pending';
+      if (tab === 'Completed') return b.status === 'completed';
+      return true;
+    });
+  }, [allBookings, tab]);
+
+  const renderBookingItem = useCallback(({ item }: { item: Booking }) => (
+    <TouchableOpacity style={styles.card} activeOpacity={0.85}>
+      <Image source={{ uri: item.performerImg }} style={styles.cardImg} contentFit="cover" transition={300} />
+      <View style={styles.cardBody}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>{item.performerName}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] + '22', borderColor: STATUS_COLORS[item.status] }]}>
+            <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>{item.status}</Text>
+          </View>
+        </View>
+        <Text style={styles.cardType}>{item.performerType}</Text>
+        <View style={styles.cardMeta}>
+          <Text style={styles.cardMetaText}>📅 {item.date}</Text>
+          <Text style={styles.cardMetaText} numberOfLines={1}>📍 {item.eventDetails}</Text>
+        </View>
+        <View style={styles.cardFooter}>
+          <Text style={styles.cardTotal}>{item.price}</Text>
+          <TouchableOpacity style={styles.viewBtn}>
+            <Text style={styles.viewBtnText}>View details →</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  ), []);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -54,30 +88,10 @@ export default function MyBookings() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         keyExtractor={i => i.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.card} activeOpacity={0.85}>
-            <Image source={{ uri: item.img }} style={styles.cardImg} contentFit="cover" transition={300} />
-            <View style={styles.cardBody}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{item.performer}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] + '22', borderColor: STATUS_COLORS[item.status] }]}>
-                  <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>{item.status}</Text>
-                </View>
-              </View>
-              <Text style={styles.cardType}>{item.type}</Text>
-              <View style={styles.cardMeta}>
-                <Text style={styles.cardMetaText}>📅 {item.date}</Text>
-                <Text style={styles.cardMetaText}>📍 {item.venue}</Text>
-              </View>
-              <View style={styles.cardFooter}>
-                <Text style={styles.cardTotal}>{item.total}</Text>
-                <TouchableOpacity style={styles.viewBtn}>
-                  <Text style={styles.viewBtnText}>View details →</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
+        renderItem={renderBookingItem}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={3}
       />
     </View>
   );
@@ -102,7 +116,7 @@ const styles = StyleSheet.create({
   statusText: { ...Typography.label, fontSize: 9 },
   cardType: { ...Typography.caption, fontSize: 12 },
   cardMeta: { flexDirection: 'row', gap: Spacing.md },
-  cardMetaText: { ...Typography.caption, fontSize: 11 },
+  cardMetaText: { ...Typography.caption, fontSize: 11, flex: 1 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   cardTotal: { ...Typography.bodyBold, fontSize: 16, color: Colors.gold },
   viewBtn: {},

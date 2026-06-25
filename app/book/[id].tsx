@@ -1,18 +1,60 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
 import { StarRow } from '@/components/StarRow';
-import { PERFORMERS } from '@/constants/data';
+import { useAppData, useBookings } from '@/context/AppContext';
 
 export default function BookDetail() {
-  const performer = PERFORMERS[0];
-  const [date, setDate]     = useState('');
-  const [guests, setGuests] = useState(50);
-  const [notes, setNotes]   = useState('');
+  const { id } = useLocalSearchParams();
+  const { performers } = useAppData();
+  const { addBooking } = useBookings();
+
+  const performer = performers.find(p => p.id === Number(id)) ?? performers[0];
+
+  const [date, setDate]           = useState('');
+  const [startTime, setStartTime] = useState('6:00 PM');
+  const [duration, setDuration]   = useState('3 hrs');
+  const [venue, setVenue]         = useState('');
+  const [guests, setGuests]       = useState(50);
+  const [notes, setNotes]         = useState('');
+
+  // Extract base fee from performer price string (e.g., "₹8,000+" -> 8000)
+  const baseFee = useMemo(() => {
+    const num = performer.price.replace(/[^\d]/g, '');
+    return num ? parseInt(num, 10) : 5000; // default to 5000 if not parsable
+  }, [performer.price]);
+
+  const travelFee = 500;
+  const platformFee = Math.round(baseFee * 0.1);
+  const totalEstimation = baseFee + travelFee + platformFee;
+
+  const handleConfirmBooking = useCallback(() => {
+    if (!date) {
+      alert('Please enter a booking date');
+      return;
+    }
+    if (!venue) {
+      alert('Please enter a venue or location');
+      return;
+    }
+
+    addBooking({
+      performerId: performer.id,
+      performerName: performer.name,
+      performerType: performer.type,
+      performerImg: performer.img,
+      date,
+      eventDetails: `${startTime} · ${duration} · ${guests} guests · at ${venue}`,
+      price: `₹${totalEstimation.toLocaleString('en-IN')}`,
+    });
+
+    alert('Booking request sent successfully!');
+    router.push('/my-bookings');
+  }, [date, venue, startTime, duration, guests, totalEstimation, performer, addBooking]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -20,7 +62,7 @@ export default function BookDetail() {
 
         {/* Hero */}
         <View style={styles.heroWrap}>
-          <Image source={{ uri: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800&h=400&fit=crop' }} style={styles.heroImg} contentFit="cover" />
+          <Image source={{ uri: performer.img }} style={styles.heroImg} contentFit="cover" />
           <LinearGradient colors={['rgba(13,27,42,0.5)', 'transparent', 'rgba(13,27,42,0.6)']} style={StyleSheet.absoluteFill} />
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Text style={styles.backIcon}>←</Text>
@@ -57,17 +99,35 @@ export default function BookDetail() {
           <View style={styles.fieldRow}>
             <View style={[styles.fieldGroup, { flex: 1 }]}>
               <Text style={styles.fieldLabel}>Start Time</Text>
-              <TextInput placeholder="6:00 PM" placeholderTextColor={Colors.creamFaint} style={styles.input} />
+              <TextInput
+                value={startTime}
+                onChangeText={setStartTime}
+                placeholder="6:00 PM"
+                placeholderTextColor={Colors.creamFaint}
+                style={styles.input}
+              />
             </View>
             <View style={[styles.fieldGroup, { flex: 1 }]}>
               <Text style={styles.fieldLabel}>Duration</Text>
-              <TextInput placeholder="3 hrs" placeholderTextColor={Colors.creamFaint} style={styles.input} />
+              <TextInput
+                value={duration}
+                onChangeText={setDuration}
+                placeholder="3 hrs"
+                placeholderTextColor={Colors.creamFaint}
+                style={styles.input}
+              />
             </View>
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Venue / Location</Text>
-            <TextInput placeholder="Event address or venue name" placeholderTextColor={Colors.creamFaint} style={styles.input} />
+            <TextInput
+              value={venue}
+              onChangeText={setVenue}
+              placeholder="Event address or venue name"
+              placeholderTextColor={Colors.creamFaint}
+              style={styles.input}
+            />
           </View>
 
           {/* Guests */}
@@ -103,7 +163,11 @@ export default function BookDetail() {
             <View style={styles.priceCardHeader}>
               <Text style={styles.priceCardTitle}>Price Estimate</Text>
             </View>
-            {[['Artist Fee', '₹8,000'], ['Travel', '₹500'], ['Platform Fee (10%)', '₹850']].map(([k, v]) => (
+            {[
+              ['Artist Fee', `₹${baseFee.toLocaleString('en-IN')}`],
+              ['Travel & Hospitality', `₹${travelFee.toLocaleString('en-IN')}`],
+              ['Platform Fee (10%)', `₹${platformFee.toLocaleString('en-IN')}`],
+            ].map(([k, v]) => (
               <View key={k} style={styles.priceRow}>
                 <Text style={styles.priceKey}>{k}</Text>
                 <Text style={styles.priceVal}>{v}</Text>
@@ -112,7 +176,7 @@ export default function BookDetail() {
             <View style={styles.priceDivider} />
             <View style={styles.priceRow}>
               <Text style={styles.priceTotalKey}>Total</Text>
-              <Text style={styles.priceTotal}>₹9,350</Text>
+              <Text style={styles.priceTotal}>₹{totalEstimation.toLocaleString('en-IN')}</Text>
             </View>
           </View>
         </View>
@@ -120,7 +184,12 @@ export default function BookDetail() {
 
       {/* CTA */}
       <View style={styles.bottomCta}>
-        <GoldButton label="Confirm Booking · ₹9,350" onPress={() => router.push('/my-bookings')} size="lg" fullWidth />
+        <GoldButton
+          label={`Confirm Booking · ₹${totalEstimation.toLocaleString('en-IN')}`}
+          onPress={handleConfirmBooking}
+          size="lg"
+          fullWidth
+        />
       </View>
     </View>
   );

@@ -1,26 +1,19 @@
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Radius, Spacing } from '@/constants/theme';
+import { Event } from '@/types';
 
 const { width } = Dimensions.get('window');
 
 interface EventCardProps {
-  item: {
-    id: number;
-    title: string;
-    date: string;
-    city: string;
-    category: string;
-    img: string;
-    price: number;
-    going: number;
-  };
+  item: Event;
   onPress: () => void;
   horizontal?: boolean;
 }
 
-export function EventCard({ item, onPress, horizontal }: EventCardProps) {
+export const EventCard = React.memo(function EventCard({ item, onPress, horizontal }: EventCardProps) {
   const cardWidth = horizontal ? width * 0.72 : width - Spacing.md * 2;
 
   return (
@@ -49,7 +42,7 @@ export function EventCard({ item, onPress, horizontal }: EventCardProps) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

@@ -1,23 +1,17 @@
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Radius, Spacing } from '@/constants/theme';
-import { StarRow } from './StarRow';
+import { StarRow } from '@/components/StarRow';
+import { Performer } from '@/types';
 
 interface PerformerCardProps {
-  item: {
-    id: number;
-    name: string;
-    type: string;
-    price: string;
-    rating: number;
-    reviews: number;
-    img: string;
-  };
+  item: Performer;
   onPress: () => void;
 }
 
-export function PerformerCard({ item, onPress }: PerformerCardProps) {
+export const PerformerCard = React.memo(function PerformerCard({ item, onPress }: PerformerCardProps) {
   return (
     <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.85}>
       <View style={styles.imageWrap}>
@@ -34,7 +28,7 @@ export function PerformerCard({ item, onPress }: PerformerCardProps) {
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

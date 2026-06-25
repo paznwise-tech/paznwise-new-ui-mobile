@@ -5,11 +5,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/GoldButton';
-import { ARTWORKS } from '@/constants/data';
-
-const CART_ITEMS = [ARTWORKS[0], ARTWORKS[2]];
+import { useCart } from '@/context/AppContext';
+import { useCallback } from 'react';
 
 export default function Cart() {
+  const { cart, removeFromCart, cartTotal, clearCart } = useCart();
+
+  const handleCheckout = useCallback(() => {
+    // Perform mock checkout
+    alert('Thank you for your order! Your luxury art pieces are secured.');
+    clearCart();
+    router.replace('/(tabs)');
+  }, [clearCart]);
+
+  const isEmpty = cart.length === 0;
+  const platformFee = isEmpty ? 0 : 850;
+  const grandTotal = isEmpty ? 0 : cartTotal + platformFee;
+
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }}>
@@ -18,71 +30,84 @@ export default function Cart() {
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <Text style={styles.title}>My Cart</Text>
-          <Text style={styles.count}>{CART_ITEMS.length} items</Text>
+          <Text style={styles.count}>{cart.length} {cart.length === 1 ? 'item' : 'items'}</Text>
         </View>
       </SafeAreaView>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 160 }}>
-        <View style={styles.items}>
-          {CART_ITEMS.map(item => (
-            <View key={item.id} style={styles.cartItem}>
-              <Image source={{ uri: item.img }} style={styles.itemImg} contentFit="cover" transition={200} />
-              <View style={styles.itemBody}>
-                <Text style={styles.itemTitle} numberOfLines={2}>{item.title}</Text>
-                <Text style={styles.itemArtist}>{item.artist}</Text>
-                <Text style={styles.itemMedium}>{item.medium}</Text>
-                <View style={styles.itemFooter}>
-                  <Text style={styles.itemPrice}>₹{item.price.toLocaleString('en-IN')}</Text>
-                  <TouchableOpacity style={styles.removeBtn}>
-                    <Text style={styles.removeText}>Remove</Text>
-                  </TouchableOpacity>
+      {isEmpty ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyIcon}>🖼️</Text>
+          <Text style={styles.emptyTitle}>Your Cart is Empty</Text>
+          <Text style={styles.emptySubtitle}>Explore original artworks from verified Indian masters and start collecting.</Text>
+          <TouchableOpacity style={styles.emptyBtn} onPress={() => router.replace('/(tabs)/browse')}>
+            <Text style={styles.emptyBtnText}>Browse Artworks</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 160 }}>
+            <View style={styles.items}>
+              {cart.map(item => (
+                <View key={item.id} style={styles.cartItem}>
+                  <Image source={{ uri: item.img }} style={styles.itemImg} contentFit="cover" transition={200} />
+                  <View style={styles.itemBody}>
+                    <Text style={styles.itemTitle} numberOfLines={2}>{item.title}</Text>
+                    <Text style={styles.itemArtist}>{item.artist}</Text>
+                    <Text style={styles.itemMedium}>{item.medium}</Text>
+                    <View style={styles.itemFooter}>
+                      <Text style={styles.itemPrice}>₹{item.price.toLocaleString('en-IN')}</Text>
+                      <TouchableOpacity style={styles.removeBtn} onPress={() => removeFromCart(item.id)}>
+                        <Text style={styles.removeText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
-              </View>
+              ))}
             </View>
-          ))}
-        </View>
 
-        {/* Summary */}
-        <View style={styles.summary}>
-          <LinearGradient colors={['#1C2F45', '#152236']} style={styles.summaryCard}>
-            <View style={styles.summaryGoldLine} />
-            <Text style={styles.summaryTitle}>Order Summary</Text>
-            {[
-              ['Subtotal', `₹${CART_ITEMS.reduce((s, i) => s + i.price, 0).toLocaleString('en-IN')}`],
-              ['Shipping', 'Free'],
-              ['Platform fee', '₹850'],
-            ].map(([k, v]) => (
-              <View key={k} style={styles.summaryRow}>
-                <Text style={styles.summaryKey}>{k}</Text>
-                <Text style={styles.summaryVal}>{v}</Text>
-              </View>
-            ))}
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryTotalKey}>Total</Text>
-              <Text style={styles.summaryTotal}>₹{(CART_ITEMS.reduce((s, i) => s + i.price, 0) + 850).toLocaleString('en-IN')}</Text>
+            {/* Summary */}
+            <View style={styles.summary}>
+              <LinearGradient colors={['#1C2F45', '#152236']} style={styles.summaryCard}>
+                <View style={styles.summaryGoldLine} />
+                <Text style={styles.summaryTitle}>Order Summary</Text>
+                {[
+                  ['Subtotal', `₹${cartTotal.toLocaleString('en-IN')}`],
+                  ['Shipping', 'Free'],
+                  ['Platform fee', `₹${platformFee}`],
+                ].map(([k, v]) => (
+                  <View key={k} style={styles.summaryRow}>
+                    <Text style={styles.summaryKey}>{k}</Text>
+                    <Text style={styles.summaryVal}>{v}</Text>
+                  </View>
+                ))}
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryRow}>
+                  <Text style={styles.summaryTotalKey}>Total</Text>
+                  <Text style={styles.summaryTotal}>₹{grandTotal.toLocaleString('en-IN')}</Text>
+                </View>
+              </LinearGradient>
             </View>
-          </LinearGradient>
-        </View>
 
-        {/* Trust */}
-        <View style={styles.trust}>
-          {[['🔒', 'Secure Checkout'], ['✅', 'Buyer Protection'], ['↩️', '7-Day Returns']].map(([i, l]) => (
-            <View key={l as string} style={styles.trustItem}>
-              <Text>{i}</Text>
-              <Text style={styles.trustText}>{l as string}</Text>
+            {/* Trust */}
+            <View style={styles.trust}>
+              {[['🔒', 'Secure Checkout'], ['✅', 'Buyer Protection'], ['↩️', '7-Day Returns']].map(([i, l]) => (
+                <View key={l as string} style={styles.trustItem}>
+                  <Text>{i}</Text>
+                  <Text style={styles.trustText}>{l as string}</Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
-      </ScrollView>
+          </ScrollView>
 
-      <View style={styles.bottomBar}>
-        <View style={styles.bottomTotal}>
-          <Text style={styles.bottomLabel}>Total</Text>
-          <Text style={styles.bottomPrice}>₹{(CART_ITEMS.reduce((s, i) => s + i.price, 0) + 850).toLocaleString('en-IN')}</Text>
-        </View>
-        <GoldButton label="Proceed to Checkout" onPress={() => {}} size="lg" />
-      </View>
+          <View style={styles.bottomBar}>
+            <View style={styles.bottomTotal}>
+              <Text style={styles.bottomLabel}>Total</Text>
+              <Text style={styles.bottomPrice}>₹{grandTotal.toLocaleString('en-IN')}</Text>
+            </View>
+            <GoldButton label="Proceed to Checkout" onPress={handleCheckout} size="lg" />
+          </View>
+        </>
+      )}
     </View>
   );
 }
@@ -120,4 +145,10 @@ const styles = StyleSheet.create({
   bottomTotal: { flex: 1 },
   bottomLabel: { ...Typography.label, fontSize: 9, color: Colors.creamDim },
   bottomPrice: { ...Typography.bodyBold, fontSize: 18, color: Colors.gold },
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Spacing.xl, gap: Spacing.sm, marginTop: -40 },
+  emptyIcon: { fontSize: 64 },
+  emptyTitle: { ...Typography.display, fontSize: 24, color: Colors.cream },
+  emptySubtitle: { ...Typography.body, fontSize: 14, color: Colors.creamDim, textAlign: 'center', lineHeight: 20, paddingHorizontal: Spacing.md },
+  emptyBtn: { marginTop: Spacing.md, borderBottomWidth: 1.5, borderBottomColor: Colors.gold, paddingVertical: Spacing.xs },
+  emptyBtnText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
 });

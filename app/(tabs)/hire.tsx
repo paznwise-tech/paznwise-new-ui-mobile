@@ -1,13 +1,39 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { PerformerCard } from '@/components/PerformerCard';
-import { PERFORMERS, PERFORMER_TYPES } from '@/constants/data';
+import { PERFORMER_TYPES } from '@/constants/data';
+import { useAppData } from '@/context/AppContext';
+import { Performer } from '@/types';
 
 export default function Hire() {
+  const { performers } = useAppData();
   const [active, setActive] = useState('All');
+
+  const filtered = useMemo(() => {
+    if (active === 'All') return performers;
+    return performers.filter(p => p.type.toLowerCase().includes(active.toLowerCase()) || active.toLowerCase().includes(p.type.toLowerCase()));
+  }, [performers, active]);
+
+  const handlePerformerPress = useCallback((id: number) => {
+    router.push(`/book/${id}` as any);
+  }, []);
+
+  const renderPerformerItem = useCallback(({ item }: { item: Performer }) => (
+    <PerformerCard item={item} onPress={() => handlePerformerPress(item.id)} />
+  ), [handlePerformerPress]);
+
+  const renderTypeItem = useCallback(({ item }: { item: typeof PERFORMER_TYPES[0] | { key: string; label: string; emoji: string } }) => (
+    <TouchableOpacity
+      style={[styles.typeChip, active === item.key && styles.typeChipActive]}
+      onPress={() => setActive(item.key)}
+    >
+      <Text style={styles.typeEmoji}>{item.emoji}</Text>
+      <Text style={[styles.typeLabel, active === item.key && { color: Colors.gold }]}>{item.label}</Text>
+    </TouchableOpacity>
+  ), [active]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -26,28 +52,23 @@ export default function Hire() {
           horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.typeList}
           keyExtractor={i => i.key}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.typeChip, active === item.key && styles.typeChipActive]}
-              onPress={() => setActive(item.key)}
-            >
-              <Text style={styles.typeEmoji}>{item.emoji}</Text>
-              <Text style={[styles.typeLabel, active === item.key && { color: Colors.gold }]}>{item.label}</Text>
-            </TouchableOpacity>
-          )}
+          renderItem={renderTypeItem}
+          initialNumToRender={8}
         />
       </SafeAreaView>
 
       <FlatList
-        data={PERFORMERS}
+        data={filtered}
         numColumns={2}
         columnWrapperStyle={styles.row}
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
         keyExtractor={i => String(i.id)}
-        renderItem={({ item }) => (
-          <PerformerCard item={item} onPress={() => router.push(`/book/${item.id}` as any)} />
-        )}
+        renderItem={renderPerformerItem}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={4}
+        removeClippedSubviews={true}
       />
     </View>
   );

@@ -1,26 +1,20 @@
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Radius, Spacing } from '@/constants/theme';
+import { Artwork } from '@/types';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - Spacing.md * 2 - Spacing.sm) / 2;
 
 interface ArtCardProps {
-  item: {
-    id: number;
-    title: string;
-    price: number;
-    artist: string;
-    img: string;
-    medium?: string;
-    tag?: string;
-  };
+  item: Artwork;
   onPress: () => void;
   fullWidth?: boolean;
 }
 
-export function ArtCard({ item, onPress, fullWidth }: ArtCardProps) {
+export const ArtCard = React.memo(function ArtCard({ item, onPress, fullWidth }: ArtCardProps) {
   const cardWidth = fullWidth ? width - Spacing.md * 2 : CARD_WIDTH;
 
   return (
@@ -57,7 +51,7 @@ export function ArtCard({ item, onPress, fullWidth }: ArtCardProps) {
       <View style={styles.borderAccent} />
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

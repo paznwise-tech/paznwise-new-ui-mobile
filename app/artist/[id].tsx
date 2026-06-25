@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   name: { ...Typography.display, fontSize: 26 },
   verifiedBadge: { width: 20, height: 20, borderRadius: 10, backgroundColor: Colors.gold, alignItems: 'center', justifyContent: 'center' },
   verifiedText: { color: Colors.bg, fontSize: 10, fontFamily: 'Inter_700Bold' },
-  tagline: { ...Typography.bodyItalic, fontSize: 14, color: Colors.creamDim, fontFamily: 'CormorantGaramond_500Medium_Italic' },
+  tagline: { ...Typography.body, fontSize: 14, color: Colors.creamDim, fontFamily: 'CormorantGaramond_500Medium_Italic' },
   location: { ...Typography.caption, fontSize: 12 },
   followRow: { flexDirection: 'row', gap: Spacing.sm },
   followBtn: { flex: 1, paddingVertical: Spacing.sm, backgroundColor: Colors.gold, borderRadius: Radius.full, alignItems: 'center' },

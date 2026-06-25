@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
@@ -9,6 +9,17 @@ export default function Signup() {
   const [email, setEmail]     = useState('');
   const [phone, setPhone]     = useState('');
   const [password, setPassword] = useState('');
+
+  const handleCreateAccount = useCallback(() => {
+    if (!name || !email || !password) {
+      alert('Please fill out all required fields');
+      return;
+    }
+    router.push({
+      pathname: '/(auth)/otp',
+      params: { name, email }
+    } as any);
+  }, [name, email, password]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -54,7 +65,7 @@ export default function Signup() {
           <Text style={{ color: Colors.gold }}>Privacy Policy</Text>
         </Text>
 
-        <GoldButton label="Create Account" onPress={() => router.push('/(auth)/otp')} size="lg" fullWidth />
+        <GoldButton label="Create Account" onPress={handleCreateAccount} size="lg" fullWidth />
 
         <View style={styles.loginRow}>
           <Text style={styles.loginPrompt}>Already have an account? </Text>
