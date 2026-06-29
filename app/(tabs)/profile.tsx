@@ -86,19 +86,30 @@ export default function Profile() {
             style={styles.avatar}
             contentFit="cover"
           />
-          <Text style={styles.name}>{user.name}</Text>
-          <Text style={styles.email}>{user.email} · {roleText}</Text>
+          <Text style={styles.name}>{user.name} {user.isVerified && <Text style={{ color: Colors.gold }}>✓</Text>}</Text>
+          <Text style={styles.email}>{user.username} · {roleText}</Text>
+          <Text style={styles.bio}>{user.bio}</Text>
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/profile/edit')}>
+              <Text style={styles.editBtnText}>Edit Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.findBtn} onPress={() => router.push('/network/suggestions')}>
+              <Text style={styles.findBtnText}>Find People</Text>
+            </TouchableOpacity>
+          </View>
           <View style={styles.stats}>
-            {[
-              [user.isArtist ? '1' : '0', 'Listed'],
-              [bookings.length.toString(), 'Bookings'],
-              [favorites.length.toString(), 'Liked'],
-            ].map(([v, l]) => (
-              <View key={l} style={styles.stat}>
-                <Text style={styles.statVal}>{v}</Text>
-                <Text style={styles.statLabel}>{l}</Text>
-              </View>
-            ))}
+            <TouchableOpacity style={styles.stat} onPress={() => router.push({ pathname: '/network/follows', params: { type: 'followers', userId: user.id } } as any)}>
+              <Text style={styles.statVal}>{user.followersCount}</Text>
+              <Text style={styles.statLabel}>Followers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.stat} onPress={() => router.push({ pathname: '/network/follows', params: { type: 'following', userId: user.id } } as any)}>
+              <Text style={styles.statVal}>{user.followingCount}</Text>
+              <Text style={styles.statLabel}>Following</Text>
+            </TouchableOpacity>
+            <View style={styles.stat}>
+              <Text style={styles.statVal}>{user.postsCount}</Text>
+              <Text style={styles.statLabel}>Posts</Text>
+            </View>
           </View>
         </LinearGradient>
 
@@ -146,7 +157,13 @@ const styles = StyleSheet.create({
   profileHeader: { alignItems: 'center', paddingVertical: Spacing.xl, paddingTop: Spacing.lg },
   avatar: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: Colors.gold, marginBottom: Spacing.md },
   name: { ...Typography.heading, fontSize: 22, marginBottom: 4 },
-  email: { ...Typography.caption, fontSize: 13, marginBottom: Spacing.lg },
+  email: { ...Typography.caption, fontSize: 13, marginBottom: Spacing.sm },
+  bio: { ...Typography.caption, fontSize: 13, textAlign: 'center', marginHorizontal: Spacing.xl, marginBottom: Spacing.md, color: Colors.creamDim, lineHeight: 20 },
+  actionRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xl },
+  editBtn: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.lg, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
+  editBtnText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.cream },
+  findBtn: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.lg, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.gold },
+  findBtnText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
   stats: { flexDirection: 'row', gap: Spacing.xl },
   stat: { alignItems: 'center' },
   statVal: { ...Typography.bodyBold, fontSize: 18, color: Colors.gold },

@@ -17,7 +17,7 @@ export default function Signup() {
     }
     router.push({
       pathname: '/(auth)/otp',
-      params: { name, email }
+      params: { name, email, mode: 'signup' }
     } as any);
   }, [name, email, password]);
 
@@ -67,6 +67,22 @@ export default function Signup() {
 
         <GoldButton label="Create Account" onPress={handleCreateAccount} size="lg" fullWidth />
 
+        {/* Divider */}
+        <View style={styles.divider}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or sign up with</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        {/* Social */}
+        <View style={styles.social}>
+          {['Google', 'Facebook', 'Apple'].map(s => (
+            <TouchableOpacity key={s} style={styles.socialBtn}>
+              <Text style={styles.socialText}>{s === 'Google' ? '🔍' : s === 'Facebook' ? '📘' : '🍎'} {s}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <View style={styles.loginRow}>
           <Text style={styles.loginPrompt}>Already have an account? </Text>
           <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
@@ -97,7 +113,19 @@ const styles = StyleSheet.create({
     ...Typography.body, fontSize: 15, color: Colors.cream,
   },
   terms: { ...Typography.caption, fontSize: 12, lineHeight: 18, marginBottom: Spacing.xl, color: Colors.creamDim },
-  loginRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: Spacing.lg },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginVertical: Spacing.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
+  dividerText: { ...Typography.caption, fontSize: 12 },
+  social: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.xl },
+  socialBtn: {
+    flex: 1, height: 48,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  socialText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.cream },
+  loginRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: Spacing.xs },
   loginPrompt: { ...Typography.caption, fontSize: 14, color: Colors.creamDim },
   loginLink: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
 });

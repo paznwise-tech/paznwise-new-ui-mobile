@@ -28,8 +28,12 @@ interface BookingsContextType {
 interface UserContextType {
   user: UserProfile & { isLoggedIn: boolean };
   updateUserProfile: (profile: Partial<UserProfile>) => void;
+  deleteProfile: () => void;
+  followUser: (id: string) => void;
+  unfollowUser: (id: string) => void;
   login: (name: string, email: string) => void;
   logout: () => void;
+  refreshSession: () => void;
 }
 
 interface AppDataContextType {
@@ -56,11 +60,19 @@ const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // ── Auth & User state ───────────────────────────────────
   const [user, setUser] = useState<UserProfile & { isLoggedIn: boolean }>({
+    id: 'u-1',
     name: 'Kabir Dev',
+    username: '@kabir_dev',
     email: 'kabir@paznwise.com',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop',
+    bio: 'Art enthusiast & collector of fine Indian heritage artworks.',
+    isVerified: true,
     isArtist: false,
     isPerformer: false,
     location: 'Mumbai',
+    followersCount: 142,
+    followingCount: 38,
+    postsCount: 12,
     isLoggedIn: true,
   });
 
@@ -72,8 +84,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUser(prev => ({ ...prev, name, email, isLoggedIn: true }));
   }, []);
 
+  const deleteProfile = useCallback(() => {
+    setUser(prev => ({ ...prev, isLoggedIn: false }));
+    alert('Profile deleted successfully.');
+  }, []);
+
+  const followUser = useCallback((id: string) => {
+    setUser(prev => ({ ...prev, followingCount: prev.followingCount + 1 }));
+  }, []);
+
+  const unfollowUser = useCallback((id: string) => {
+    setUser(prev => ({ ...prev, followingCount: Math.max(0, prev.followingCount - 1) }));
+  }, []);
+
   const logout = useCallback(() => {
     setUser(prev => ({ ...prev, isLoggedIn: false }));
+  }, []);
+
+  const refreshSession = useCallback(() => {
+    // Mock refreshing token
+    console.log('Session refreshed');
   }, []);
 
   // ── Cart state ──────────────────────────────────────────
@@ -151,7 +181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cartValue = useMemo(() => ({ cart, addToCart, removeFromCart, clearCart, cartTotal }), [cart, addToCart, removeFromCart, clearCart, cartTotal]);
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
   const bookingsValue = useMemo(() => ({ bookings, addBooking }), [bookings, addBooking]);
-  const userValue = useMemo(() => ({ user, updateUserProfile, login, logout }), [user, updateUserProfile, login, logout]);
+  const userValue = useMemo(() => ({ user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, logout, refreshSession }), [user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, logout, refreshSession]);
   const appDataValue = useMemo(() => ({ artworks, performers, addArtwork, addPerformer }), [artworks, performers, addArtwork, addPerformer]);
 
   return (
