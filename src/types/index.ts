@@ -71,9 +71,19 @@ export interface Booking {
 }
 
 export interface UserProfile {
+  id: string;
   name: string;
+  username: string;
   email: string;
+  avatar: string;
+  bio: string;
+  isVerified: boolean;
   isArtist: boolean;
   isPerformer: boolean;
   location?: string;
+  followersCount: number;
+  followingCount: number;
+  postsCount: number;
+  mutualFollowersCount?: number;
+  isFollowing?: boolean;
 }

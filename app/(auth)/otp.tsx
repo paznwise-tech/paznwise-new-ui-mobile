@@ -6,7 +6,7 @@ import { GoldButton } from '@/components/GoldButton';
 import { useUser } from '@/context/AppContext';
 
 export default function OTP() {
-  const { name, email } = useLocalSearchParams<{ name: string; email: string }>();
+  const { name, email, mode } = useLocalSearchParams<{ name?: string; email?: string; mode?: string }>();
   const { login } = useUser();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const refs = useRef<(TextInput | null)[]>([]);
@@ -19,10 +19,14 @@ export default function OTP() {
   };
 
   const handleVerify = useCallback(() => {
+    if (mode === 'reset_password') {
+      router.replace('/(auth)/reset-password');
+      return;
+    }
     login(name || 'Amit Kumar', email || 'amit@example.com');
-    alert('Account created and verified successfully!');
+    alert(mode === 'signup' ? 'Account created and verified successfully!' : 'Logged in successfully!');
     router.replace('/(tabs)');
-  }, [name, email, login]);
+  }, [name, email, login, mode]);
 
   return (
     <View style={styles.container}>
@@ -32,7 +36,7 @@ export default function OTP() {
 
       <View style={styles.header}>
         <View style={styles.decorLine} />
-        <Text style={styles.eyebrow}>Verification</Text>
+        <Text style={styles.eyebrow}>{mode === 'signup' ? 'Verification' : mode === 'reset_password' ? 'Password Reset' : 'Login Verification'}</Text>
         <Text style={styles.title}>Enter OTP</Text>
         <Text style={styles.sub}>We sent a 6-digit code to your phone/email</Text>
       </View>

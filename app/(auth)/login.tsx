@@ -7,20 +7,20 @@ import { useUser } from '@/context/AppContext';
 
 export default function Login() {
   const { login } = useUser();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
 
   const handleSignIn = useCallback(() => {
-    if (!email) {
-      alert('Please enter your email address');
+    if (!identifier) {
+      alert('Please enter your email, phone, or username');
       return;
     }
     // Mock user login
-    login('Amit Kumar', email);
+    login('Amit Kumar', identifier);
     alert('Logged in successfully!');
     router.replace('/(tabs)');
-  }, [email, login]);
+  }, [identifier, login]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -41,13 +41,12 @@ export default function Login() {
         {/* Form */}
         <View style={styles.form}>
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email Address</Text>
+            <Text style={styles.label}>Email, Phone, or Username</Text>
             <TextInput
-              value={email}
-              onChangeText={setEmail}
-              placeholder="you@example.com"
+              value={identifier}
+              onChangeText={setIdentifier}
+              placeholder="Enter email, phone, or username"
               placeholderTextColor={Colors.creamFaint}
-              keyboardType="email-address"
               autoCapitalize="none"
               style={styles.input}
             />
@@ -70,12 +69,16 @@ export default function Login() {
             </View>
           </View>
 
-          <TouchableOpacity style={styles.forgotRow}>
+          <TouchableOpacity style={styles.forgotRow} onPress={() => router.push('/(auth)/forgot-password')}>
             <Text style={styles.forgotText}>Forgot password?</Text>
           </TouchableOpacity>
         </View>
 
         <GoldButton label="Sign In" onPress={handleSignIn} size="lg" fullWidth />
+        <View style={{ height: Spacing.md }} />
+        <TouchableOpacity style={styles.otpLink} onPress={() => router.push('/(auth)/request-otp')}>
+          <Text style={styles.otpLinkText}>Login with OTP instead</Text>
+        </TouchableOpacity>
 
         {/* Divider */}
         <View style={styles.divider}>
@@ -86,9 +89,9 @@ export default function Login() {
 
         {/* Social */}
         <View style={styles.social}>
-          {['Google', 'Phone'].map(s => (
+          {['Google', 'Facebook', 'Apple'].map(s => (
             <TouchableOpacity key={s} style={styles.socialBtn}>
-              <Text style={styles.socialText}>{s === 'Google' ? '🔍' : '📱'} {s}</Text>
+              <Text style={styles.socialText}>{s === 'Google' ? '🔍' : s === 'Facebook' ? '📘' : '🍎'} {s}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -144,6 +147,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   socialText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.cream },
+  otpLink: { alignItems: 'center' },
+  otpLinkText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
   signupRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   signupPrompt: { ...Typography.caption, fontSize: 14, color: Colors.creamDim },
   signupLink: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
