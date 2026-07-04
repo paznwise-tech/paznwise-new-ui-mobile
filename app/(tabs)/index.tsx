@@ -1,19 +1,19 @@
 // Home — Discovery feed with hero slider, categories, artworks, performers, events
-import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity } from 'react-native';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { ArtCard } from '@/components/ArtCard';
-import { PerformerCard } from '@/components/PerformerCard';
-import { EventCard } from '@/components/EventCard';
-import { SectionHeader } from '@/components/SectionHeader';
-import { EVENTS, HERO_SLIDES, CATEGORIES } from '@/constants/data';
-import { useAppData, useCart } from '@/context/AppContext';
-import { Artwork, Performer, Event } from '@/types';
-
+import ProductCard from '@/components/product/ProductCard';
+import { PerformerCard } from '@/components/artist/PerformerCard';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { HERO_SLIDES, CATEGORIES } from '@/constants/data';
+import { useAppData, useCart, useUser, useFeed } from '@/context/AppContext';
+import { Performer } from '@/types';
+import { FeedPost } from '@/services/feedService';
+import { useMarketplaceProducts } from '@/hooks/useProducts';
 const { width } = Dimensions.get('window');
 
 function HeroSlider() {
@@ -88,33 +88,128 @@ function CategoryBar() {
 }
 
 export default function Home() {
-  const { artworks, performers } = useAppData();
+  const { performers } = useAppData();
   const { cart } = useCart();
+  const { user } = useUser();
+  const { feedPosts, trendingPosts, feedLoading, feedError, fetchPersonalisedFeed, fetchTrendingFeed, togglePostLike, likePost } = useFeed();
 
-  const handleArtPress = useCallback((id: number) => {
-    router.push(`/artwork/${id}` as any);
-  }, []);
+  const lastTapRef = useRef<{ postId: number; time: number } | null>(null);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleImagePress = useCallback((id: number) => {
+    const now = Date.now();
+    if (lastTapRef.current?.postId === id && now - lastTapRef.current.time < 300) {
+      clearTimeout(tapTimerRef.current!);
+      lastTapRef.current = null;
+      likePost(id);
+    } else {
+      lastTapRef.current = { postId: id, time: now };
+      tapTimerRef.current = setTimeout(() => {
+        lastTapRef.current = null;
+        router.push(`/feed/${id}` as any);
+      }, 280);
+    }
+  }, [likePost]);
+  const { products: freshProducts } = useMarketplaceProducts(6);
+
+  // Fetch feed data — personalized only once a real user is loaded
+  useEffect(() => {
+    fetchTrendingFeed();
+  }, [fetchTrendingFeed]);
+
+  useEffect(() => {
+    if (user.isLoggedIn && user.id) {
+      fetchPersonalisedFeed(user.id);
+    }
+  }, [user.isLoggedIn, user.id, fetchPersonalisedFeed]);
 
   const handlePerformerPress = useCallback((id: number) => {
-    router.push(`/book/${id}` as any);
+    router.push(`/booking/${id}` as any);
   }, []);
-
-  const handleEventPress = useCallback(() => {
-    router.push('/(tabs)/events');
-  }, []);
-
-  const renderArtItem = useCallback(({ item }: { item: Artwork }) => (
-    <ArtCard item={item} onPress={() => handleArtPress(item.id)} />
-  ), [handleArtPress]);
 
   const renderPerformerItem = useCallback(({ item }: { item: Performer }) => (
     <PerformerCard item={item} onPress={() => handlePerformerPress(item.id)} />
   ), [handlePerformerPress]);
 
-  const renderEventItem = useCallback(({ item }: { item: Event }) => (
-    <EventCard item={item} onPress={handleEventPress} horizontal />
-  ), [handleEventPress]);
+  // Render a feed post card
+  const renderFeedPost = useCallback(({ item }: { item: FeedPost }) => {
+    const imageUri = item.imageUrls?.[0];
+    const avatarUri =
+      item.artist?.profile?.avatar ??
+      item.artist?.avatar ??
+      item.artist?.picture ??
+      item.picture;
+    const displayName =
+      item.artist?.name ??
+      item.artist?.username ??
+      item.profileName ??
+      null;
+    const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
+    const hasImage = !!imageUri;
+    const label = item.title || item.description || item.style || item.category || '';
 
+    return (
+      <View style={styles.feedCard}>
+        {/* Image — double-tap to like, single-tap to navigate */}
+        <TouchableOpacity activeOpacity={0.9} onPress={() => handleImagePress(item.id)}>
+          <View style={styles.feedImageWrap}>
+            {hasImage ? (
+              <Image source={{ uri: imageUri }} style={styles.feedImage} contentFit="cover" transition={300} />
+            ) : (
+              <View style={styles.feedImagePlaceholder}>
+                <Text style={styles.feedImagePlaceholderIcon}>🖼</Text>
+              </View>
+            )}
+            {/* Like badge — always toggles */}
+            <View style={styles.feedLikeBadge}>
+              <TouchableOpacity onPress={() => togglePostLike(item.id)}>
+                <Text style={[styles.feedLikeBadgeText, item.isLiked && { color: '#ff6b6b' }]}>
+                  {item.isLiked ? '♥' : '♡'} {item.likesCount ?? 0}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {/* Card body — tap to navigate */}
+        <TouchableOpacity activeOpacity={0.85} onPress={() => router.push(`/feed/${item.id}` as any)}>
+          <View style={styles.feedContent}>
+            {(avatarUri || displayName) && (
+              <View style={styles.feedUserRow}>
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.feedAvatar} contentFit="cover" />
+                ) : (
+                  <View style={styles.feedAvatarPlaceholder}>
+                    <Text style={styles.feedAvatarInitial}>{initial}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  {displayName ? (
+                    <Text style={styles.feedUsername} numberOfLines={1}>{displayName}</Text>
+                  ) : null}
+                  {item.artist?.isVerified && (
+                    <Text style={styles.feedVerified}>✓ Verified</Text>
+                  )}
+                </View>
+                {item.commentsCount > 0 && (
+                  <Text style={styles.feedCommentCount}>💬 {item.commentsCount}</Text>
+                )}
+              </View>
+            )}
+            {label ? (
+              <Text style={styles.feedLabel} numberOfLines={2}>{label}</Text>
+            ) : null}
+            {(item.style || item.category) ? (
+              <View style={styles.feedTagRow}>
+                {item.style ? <View style={styles.feedTag}><Text style={styles.feedTagText}>{item.style}</Text></View> : null}
+                {item.category ? <View style={styles.feedTag}><Text style={styles.feedTagText}>{item.category}</Text></View> : null}
+              </View>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+      </View>
+    );
+  }, [togglePostLike, handleImagePress]);
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <SafeAreaView edges={['top']} style={styles.safeTop}>
@@ -128,7 +223,7 @@ export default function Home() {
             <TouchableOpacity style={styles.searchBtn} onPress={() => router.push('/(tabs)/browse')}>
               <Text style={styles.searchIcon}>🔍</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cartBtn} onPress={() => router.push('/cart')}>
+            <TouchableOpacity style={styles.cartBtn} onPress={() => router.push('/product/cart' as any)}>
               <Text style={styles.cartIcon}>🛒</Text>
               {cart.length > 0 && (
                 <View style={styles.cartBadge}>
@@ -144,20 +239,81 @@ export default function Home() {
         <HeroSlider />
         <CategoryBar />
 
-        {/* Fresh Artworks */}
-        <SectionHeader title="Fresh Artworks" subtitle="Newly listed originals" onSeeAll={() => router.push('/(tabs)/browse')} />
-        <FlatList
-          data={artworks.slice(0, 6)}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hList}
-          keyExtractor={i => String(i.id)}
-          renderItem={renderArtItem}
-          initialNumToRender={3}
-          maxToRenderPerBatch={3}
-          windowSize={3}
-          removeClippedSubviews={true}
-        />
+        {/* Feed Loading State */}
+        {feedLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={Colors.gold} />
+            <Text style={styles.loadingText}>Loading feed…</Text>
+          </View>
+        )}
+
+        {/* Feed Error State */}
+        {feedError && !feedLoading && (
+          <View style={styles.errorContainer}>
+            <Text style={styles.errorText}>⚠ {feedError}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={() => { fetchTrendingFeed(); if (user.id) fetchPersonalisedFeed(user.id); }}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Trending Feed Posts */}
+        {trendingPosts.length > 0 && (
+          <>
+            <SectionHeader title="Trending Now" subtitle="What's popular on Paznwise" />
+            <FlatList
+              data={trendingPosts.slice(0, 10)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.hList}
+              keyExtractor={i => String(i.id)}
+              renderItem={renderFeedPost}
+              initialNumToRender={3}
+              maxToRenderPerBatch={3}
+              windowSize={3}
+            />
+          </>
+        )}
+
+        {/* Personalised Feed Posts */}
+        {feedPosts.length > 0 && (
+          <>
+            <SectionHeader title="For You" subtitle="Personalised picks" />
+            <FlatList
+              data={feedPosts.slice(0, 10)}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.hList}
+              keyExtractor={i => String(i.id)}
+              renderItem={renderFeedPost}
+              initialNumToRender={3}
+              maxToRenderPerBatch={3}
+              windowSize={3}
+            />
+          </>
+        )}
+
+        {/* Fresh Artworks from API */}
+        {freshProducts.length > 0 && (
+          <>
+            <SectionHeader title="Fresh Artworks" subtitle="Newly listed originals" onSeeAll={() => router.push('/(tabs)/browse')} />
+            <FlatList
+              data={freshProducts}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.hList}
+              keyExtractor={i => i.id}
+              renderItem={({ item }) => (
+                <View style={{ width: 160 }}>
+                  <ProductCard product={item} />
+                </View>
+              )}
+              initialNumToRender={3}
+              maxToRenderPerBatch={3}
+              windowSize={3}
+            />
+          </>
+        )}
 
         {/* Performers */}
         <SectionHeader title="Live Performers" subtitle="For events & weddings" onSeeAll={() => router.push('/(tabs)/hire')} />
@@ -174,32 +330,17 @@ export default function Home() {
           removeClippedSubviews={true}
         />
 
-        {/* Events */}
-        <SectionHeader title="Upcoming Events" subtitle="Exhibitions, workshops & shows" onSeeAll={() => router.push('/(tabs)/events')} />
-        <FlatList
-          data={EVENTS}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hList}
-          keyExtractor={i => String(i.id)}
-          renderItem={renderEventItem}
-          initialNumToRender={2}
-          maxToRenderPerBatch={2}
-          windowSize={2}
-          removeClippedSubviews={true}
-        />
-
         {/* Sell / Register CTA */}
         <View style={styles.ctaSection}>
           <LinearGradient colors={['#1C2F45', '#0D1B2A']} style={styles.ctaCard}>
             <View style={styles.ctaGoldLine} />
             <Text style={styles.ctaEyebrow}>For Creators</Text>
-            <Text style={styles.ctaTitle}>Share Your Art{"\n"}With the World</Text>
+            <Text style={styles.ctaTitle}>Share Your Art{'\n'}With the World</Text>
             <View style={styles.ctaBtns}>
-              <TouchableOpacity style={styles.ctaBtn} onPress={() => router.push('/sell')}>
+              <TouchableOpacity style={styles.ctaBtn} onPress={() => router.push('/product/create' as any)}>
                 <Text style={styles.ctaBtnText}>Sell Artwork</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnOutline]} onPress={() => router.push('/register-artist')}>
+              <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnOutline]} onPress={() => router.push('/artist/register-artist')}>
                 <Text style={[styles.ctaBtnText, { color: Colors.gold }]}>Register as Performer</Text>
               </TouchableOpacity>
             </View>
@@ -247,4 +388,34 @@ const styles = StyleSheet.create({
   ctaBtn: { backgroundColor: Colors.gold, paddingVertical: Spacing.md, borderRadius: Radius.full, alignItems: 'center' },
   ctaBtnOutline: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.gold },
   ctaBtnText: { ...Typography.bodyBold, fontSize: 14, color: Colors.bg },
+  // Feed styles
+  loadingContainer: { padding: Spacing.xxl, alignItems: 'center', gap: Spacing.md },
+  loadingText: { ...Typography.caption, fontSize: 13, color: Colors.creamDim },
+  errorContainer: { padding: Spacing.lg, margin: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', gap: Spacing.sm },
+  errorText: { ...Typography.caption, fontSize: 13, color: Colors.creamDim },
+  retryBtn: { backgroundColor: Colors.gold, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, borderRadius: Radius.full },
+  retryBtnText: { ...Typography.bodyBold, fontSize: 13, color: Colors.bg },
+  feedCard: { width: 220, backgroundColor: Colors.bgCard, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, overflow: 'hidden' },
+  feedImageWrap: { position: 'relative' },
+  feedImage: { width: 220, height: 160 },
+  feedImagePlaceholder: { width: 220, height: 160, backgroundColor: Colors.bgElevated, alignItems: 'center', justifyContent: 'center' },
+  feedImagePlaceholderIcon: { fontSize: 32 },
+  feedLikeBadge: { position: 'absolute', bottom: Spacing.xs, right: Spacing.xs, backgroundColor: 'rgba(13,27,42,0.75)', borderRadius: Radius.full, paddingHorizontal: Spacing.sm, paddingVertical: 3 },
+  feedLikeBadgeText: { ...Typography.caption, fontSize: 11, color: Colors.cream },
+  feedContent: { padding: Spacing.sm, gap: Spacing.xs },
+  feedUserRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  feedAvatar: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: Colors.borderGold },
+  feedAvatarPlaceholder: { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.borderGold, alignItems: 'center', justifyContent: 'center' },
+  feedAvatarInitial: { ...Typography.bodyBold, fontSize: 11, color: Colors.gold },
+  feedUsername: { ...Typography.bodySemibold, fontSize: 12, color: Colors.cream },
+  feedVerified: { ...Typography.caption, fontSize: 9, color: Colors.gold },
+  feedCommentCount: { ...Typography.caption, fontSize: 11, color: Colors.creamFaint },
+  feedLabel: { ...Typography.caption, fontSize: 12, color: Colors.creamDim, lineHeight: 17 },
+  feedTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
+  feedTag: { backgroundColor: Colors.gold + '18', borderRadius: Radius.full, paddingHorizontal: 7, paddingVertical: 2, borderWidth: 1, borderColor: Colors.borderGold },
+  feedTagText: { ...Typography.caption, fontSize: 10, color: Colors.gold },
+  feedText: { ...Typography.caption, fontSize: 12, color: Colors.creamDim, lineHeight: 18 },
+  feedMeta: { flexDirection: 'row', gap: Spacing.md, alignItems: 'center' },
+  feedLikeBtn: { flexDirection: 'row', alignItems: 'center' },
+  feedMetaText: { ...Typography.caption, fontSize: 11, color: Colors.creamFaint },
 });

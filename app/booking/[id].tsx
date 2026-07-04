@@ -4,8 +4,8 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { GoldButton } from '@/components/GoldButton';
-import { StarRow } from '@/components/StarRow';
+import { GoldButton } from '@/components/ui/GoldButton';
+import { StarRow } from '@/components/ui/StarRow';
 import { useAppData, useBookings } from '@/context/AppContext';
 
 export default function BookDetail() {
@@ -53,7 +53,7 @@ export default function BookDetail() {
     });
 
     alert('Booking request sent successfully!');
-    router.push('/my-bookings');
+    router.push('/booking/my-bookings' as any);
   }, [date, venue, startTime, duration, guests, totalEstimation, performer, addBooking]);
 
   return (

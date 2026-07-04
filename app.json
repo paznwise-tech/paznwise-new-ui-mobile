@@ -4,8 +4,14 @@
     "slug": "paznwise",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/images/icon-app.svg",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0D1B2A",
+    "splash": {
+      "image": "./assets/images/icon-app.svg",
+      "resizeMode": "contain",
+      "backgroundColor": "#0D1B2A"
+    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -20,7 +26,15 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Paznwise to access your photos to upload product images.",
+          "cameraPermission": "Allow Paznwise to use your camera to take product photos."
+        }
+      ]
     ],
     "scheme": "paznwise",
     "experiments": {

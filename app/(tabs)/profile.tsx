@@ -4,37 +4,39 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { useUser, useBookings, useFavorites } from '@/context/AppContext';
-import { useCallback, useMemo } from 'react';
+import { useUser } from '@/context/AppContext';
+import { useCallback, useMemo, useEffect, useState } from 'react';
+import { FullPhotoModal } from '@/components/ui/FullPhotoModal';
 
 const MENU_ITEMS = [
-  { icon: '🖼', label: 'My Orders',        sub: 'Track your artwork purchases',    route: '/cart' },
-  { icon: '🎵', label: 'My Bookings',      sub: 'Performer bookings & events',     route: '/my-bookings' },
+  { icon: '🖼', label: 'My Orders',        sub: 'Track your artwork purchases',    route: '/product/cart' },
+  { icon: '🎨', label: 'Sell Artwork',      sub: 'List, manage & sell your art',   route: '/product/my-listings' },
+  { icon: '📸', label: 'My Posts',           sub: 'Manage, edit & share your artwork',     route: '/feed/my-posts' },
+  { icon: '🎵', label: 'My Bookings',      sub: 'Performer bookings & events',     route: '/booking/my-bookings' },
   { icon: '💬', label: 'Messages',          sub: 'Chat with artists & sellers',     route: '/messages' },
-  { icon: '🎨', label: 'Sell Artwork',      sub: 'List your original pieces',       route: '/sell' },
-  { icon: '🎤', label: 'Register as Performer', sub: 'Get booked for events',      route: '/register-artist' },
+  { icon: '🎤', label: 'Register as Performer', sub: 'Get booked for events',      route: '/artist/register-artist' },
   { icon: '⚙️', label: 'Settings',          sub: 'Account, privacy & more',        route: null },
   { icon: '❓', label: 'Help & Support',    sub: 'FAQs, contact us',               route: null },
 ];
 
 export default function Profile() {
-  const { user, logout } = useUser();
-  const { bookings } = useBookings();
-  const { favorites } = useFavorites();
+  const { user, logout, loadProfile } = useUser();
+  const [photoVisible, setPhotoVisible] = useState(false);
 
   const isLoggedIn = user.isLoggedIn;
 
-  const roleText = useMemo(() => {
-    const roles: string[] = [];
-    if (user.isArtist) roles.push('Artist');
-    if (user.isPerformer) roles.push('Performer');
-    if (roles.length === 0) roles.push('Collector');
-    return roles.join(' & ');
-  }, [user.isArtist, user.isPerformer]);
+  useEffect(() => {
+    if (isLoggedIn) loadProfile();
+  }, [isLoggedIn]);
 
-  const handleSignOut = useCallback(() => {
-    logout();
-    alert('Signed out successfully.');
+  const roleText = useMemo(() => {
+    const map: Record<string, string> = { ARTIST: 'Artist', BUYER: 'Buyer', ORGANIZER: 'Organizer', ADMIN: 'Admin' };
+    return user.role ? (map[user.role] ?? user.role) : 'Member';
+  }, [user.role]);
+
+  const handleSignOut = useCallback(async () => {
+    await logout();
+    router.replace('/(auth)/login');
   }, [logout]);
 
   if (!isLoggedIn) {
@@ -81,19 +83,34 @@ export default function Profile() {
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Profile header */}
         <LinearGradient colors={['#1C2F45', Colors.bg]} style={styles.profileHeader}>
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop' }}
-            style={styles.avatar}
-            contentFit="cover"
-          />
+          <View style={styles.avatarWrapper}>
+            <TouchableOpacity activeOpacity={0.9} onLongPress={() => setPhotoVisible(true)} delayLongPress={300}>
+              {user.avatar ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatar} contentFit="cover" />
+              ) : (
+                <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                  <Text style={styles.avatarInitial}>
+                    {user.name?.charAt(0)?.toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.editAvatarBtn}
+              onPress={() => router.push('/profile/edit' as any)}
+            >
+              <Text style={styles.editAvatarIcon}>✎</Text>
+            </TouchableOpacity>
+          </View>
+          <FullPhotoModal uri={user.avatar} visible={photoVisible} onClose={() => setPhotoVisible(false)} />
           <Text style={styles.name}>{user.name} {user.isVerified && <Text style={{ color: Colors.gold }}>✓</Text>}</Text>
           <Text style={styles.email}>{user.username} · {roleText}</Text>
           <Text style={styles.bio}>{user.bio}</Text>
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/profile/edit')}>
+            <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/profile/edit' as any)}>
               <Text style={styles.editBtnText}>Edit Profile</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.findBtn} onPress={() => router.push('/network/suggestions')}>
+            <TouchableOpacity style={styles.findBtn} onPress={() => router.push('/network/suggestions' as any)}>
               <Text style={styles.findBtnText}>Find People</Text>
             </TouchableOpacity>
           </View>
@@ -155,7 +172,17 @@ const styles = StyleSheet.create({
   guestMenuLabel: { ...Typography.bodySemibold, fontSize: 14, flex: 1 },
   guestMenuArrow: { color: Colors.gold, fontSize: 20 },
   profileHeader: { alignItems: 'center', paddingVertical: Spacing.xl, paddingTop: Spacing.lg },
-  avatar: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: Colors.gold, marginBottom: Spacing.md },
+  avatarWrapper: { position: 'relative', marginBottom: Spacing.md },
+  avatar: { width: 88, height: 88, borderRadius: 44, borderWidth: 2, borderColor: Colors.gold },
+  avatarPlaceholder: { backgroundColor: Colors.bgCard, justifyContent: 'center', alignItems: 'center' },
+  avatarInitial: { ...Typography.heading, fontSize: 32, color: Colors.gold },
+  editAvatarBtn: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: Colors.gold, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: Colors.bg,
+  },
+  editAvatarIcon: { fontSize: 13, color: Colors.bg },
   name: { ...Typography.heading, fontSize: 22, marginBottom: 4 },
   email: { ...Typography.caption, fontSize: 13, marginBottom: Spacing.sm },
   bio: { ...Typography.caption, fontSize: 13, textAlign: 'center', marginHorizontal: Spacing.xl, marginBottom: Spacing.md, color: Colors.creamDim, lineHeight: 20 },

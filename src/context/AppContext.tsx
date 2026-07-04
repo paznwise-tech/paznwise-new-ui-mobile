@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
-import { Artwork, Performer, Event, CartItem, Booking, UserProfile } from '@/types';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import { Artwork, Performer, CartItem, Booking, UserProfile } from '@/types';
 import { ARTWORKS as INITIAL_ARTWORKS, PERFORMERS as INITIAL_PERFORMERS } from '@/constants/data';
+import { FeedService, FeedPost, CreatePostData, UpdatePostData, InteractData } from '@/services/feedService';
+import { AuthStorage } from '@/services/authStorage';
+import { UserService } from '@/services/userService';
 
 // ─────────────────────────────────────────────────────────
 // Context Type Definitions
@@ -32,7 +35,9 @@ interface UserContextType {
   followUser: (id: string) => void;
   unfollowUser: (id: string) => void;
   login: (name: string, email: string) => void;
-  logout: () => void;
+  loginWithProfile: (profile: Partial<UserProfile>) => void;
+  loadProfile: () => Promise<void>;
+  logout: () => Promise<void>;
   refreshSession: () => void;
 }
 
@@ -41,6 +46,23 @@ interface AppDataContextType {
   performers: Performer[];
   addArtwork: (artwork: Omit<Artwork, 'id'>) => void;
   addPerformer: (performer: Omit<Performer, 'id'>) => void;
+}
+
+interface FeedContextType {
+  feedPosts: FeedPost[];
+  trendingPosts: FeedPost[];
+  followingPosts: FeedPost[];
+  feedLoading: boolean;
+  feedError: string | null;
+  fetchPersonalisedFeed: (userId: string) => Promise<void>;
+  fetchTrendingFeed: () => Promise<void>;
+  fetchFollowingFeed: () => Promise<void>;
+  createPost: (data: CreatePostData) => Promise<void>;
+  updatePost: (postId: number, data: UpdatePostData) => Promise<void>;
+  deletePost: (postId: number) => Promise<void>;
+  interactWithPost: (data: InteractData) => Promise<void>;
+  togglePostLike: (postId: number) => Promise<void>;
+  likePost: (postId: number) => Promise<void>;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -52,6 +74,7 @@ const FavoritesContext = createContext<FavoritesContextType | undefined>(undefin
 const BookingsContext = createContext<BookingsContextType | undefined>(undefined);
 const UserContext = createContext<UserContextType | undefined>(undefined);
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
+const FeedContext = createContext<FeedContextType | undefined>(undefined);
 
 // ─────────────────────────────────────────────────────────
 // Provider Component
@@ -60,20 +83,20 @@ const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // ── Auth & User state ───────────────────────────────────
   const [user, setUser] = useState<UserProfile & { isLoggedIn: boolean }>({
-    id: 'u-1',
-    name: 'Kabir Dev',
-    username: '@kabir_dev',
-    email: 'kabir@paznwise.com',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop',
-    bio: 'Art enthusiast & collector of fine Indian heritage artworks.',
-    isVerified: true,
+    id: '',
+    name: '',
+    username: '',
+    email: '',
+    avatar: '',
+    bio: '',
+    isVerified: false,
     isArtist: false,
     isPerformer: false,
-    location: 'Mumbai',
-    followersCount: 142,
-    followingCount: 38,
-    postsCount: 12,
-    isLoggedIn: true,
+    location: undefined,
+    followersCount: 0,
+    followingCount: 0,
+    postsCount: 0,
+    isLoggedIn: false,
   });
 
   const updateUserProfile = useCallback((profile: Partial<UserProfile>) => {
@@ -84,21 +107,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUser(prev => ({ ...prev, name, email, isLoggedIn: true }));
   }, []);
 
+  const loginWithProfile = useCallback((profile: Partial<UserProfile>) => {
+    setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+  }, []);
+
+  const loadProfile = useCallback(async () => {
+    try {
+      const profile = await UserService.getMyProfile();
+      setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+    } catch (e) {
+      console.warn('[AppContext] loadProfile failed:', e);
+    }
+  }, []);
+
+  // Restore session on app start if a stored token exists
+  useEffect(() => {
+    AuthStorage.getAccessToken().then(token => {
+      if (token) loadProfile();
+    });
+  }, [loadProfile]);
+
   const deleteProfile = useCallback(() => {
     setUser(prev => ({ ...prev, isLoggedIn: false }));
     alert('Profile deleted successfully.');
   }, []);
 
-  const followUser = useCallback((id: string) => {
+  const followUser = useCallback((_id: string) => {
     setUser(prev => ({ ...prev, followingCount: prev.followingCount + 1 }));
   }, []);
 
-  const unfollowUser = useCallback((id: string) => {
+  const unfollowUser = useCallback((_id: string) => {
     setUser(prev => ({ ...prev, followingCount: Math.max(0, prev.followingCount - 1) }));
   }, []);
 
-  const logout = useCallback(() => {
-    setUser(prev => ({ ...prev, isLoggedIn: false }));
+  const logout = useCallback(async () => {
+    try {
+      const refreshToken = await AuthStorage.getRefreshToken();
+      if (refreshToken) {
+        const { AuthService } = await import('@/services/authService');
+        await AuthService.logoutApi(refreshToken).catch(() => {});
+      }
+    } finally {
+      await AuthStorage.clearTokens();
+      setUser(prev => ({ ...prev, isLoggedIn: false }));
+    }
   }, []);
 
   const refreshSession = useCallback(() => {
@@ -177,23 +229,166 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
+  // ── Feed state ──────────────────────────────────────────
+  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [trendingPosts, setTrendingPosts] = useState<FeedPost[]>([]);
+  const [followingPosts, setFollowingPosts] = useState<FeedPost[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
+  const [feedError, setFeedError] = useState<string | null>(null);
+
+  const fetchPersonalisedFeed = useCallback(async (userId: string) => {
+    setFeedLoading(true);
+    setFeedError(null);
+    try {
+      const data = await FeedService.getPersonalisedFeed(userId);
+      setFeedPosts(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.warn('[Feed] personalised feed error:', err.message);
+      setFeedError(err.message || 'Failed to load feed');
+      setFeedPosts([]);
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
+
+  const fetchTrendingFeed = useCallback(async () => {
+    setFeedLoading(true);
+    setFeedError(null);
+    try {
+      const data = await FeedService.getTrendingFeed();
+      setTrendingPosts(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.warn('[Feed] trending feed error:', err.message);
+      setFeedError(err.message || 'Failed to load trending');
+      setTrendingPosts([]);
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
+
+  const fetchFollowingFeed = useCallback(async () => {
+    setFeedLoading(true);
+    setFeedError(null);
+    try {
+      const data = await FeedService.getFollowingFeed();
+      setFollowingPosts(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.warn('[Feed] following feed error:', err.message);
+      setFeedError(err.message || 'Failed to load following feed');
+      setFollowingPosts([]);
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
+
+  const createPost = useCallback(async (data: CreatePostData) => {
+    try {
+      const newPost = await FeedService.createPost(data);
+      setFeedPosts(prev => [newPost, ...prev]);
+    } catch (err: any) {
+      console.warn('[Feed] create post error:', err.message);
+      throw err;
+    }
+  }, []);
+
+  const updatePost = useCallback(async (postId: number, data: UpdatePostData) => {
+    try {
+      const updated = await FeedService.updatePost(postId, data);
+      setFeedPosts(prev => prev.map(p => p.id === postId ? updated : p));
+    } catch (err: any) {
+      console.warn('[Feed] update post error:', err.message);
+      throw err;
+    }
+  }, []);
+
+  const deleteFeedPost = useCallback(async (postId: number) => {
+    try {
+      await FeedService.deletePost(postId);
+      setFeedPosts(prev => prev.filter(p => p.id !== postId));
+    } catch (err: any) {
+      console.warn('[Feed] delete post error:', err.message);
+      throw err;
+    }
+  }, []);
+
+  const interactWithPost = useCallback(async (data: InteractData) => {
+    try {
+      await FeedService.interact(data);
+    } catch (err: any) {
+      console.warn('[Feed] interact error:', err.message);
+      throw err;
+    }
+  }, []);
+
+  const applyLikeState = useCallback((postId: number, isLiked: boolean, likesCount: number) => {
+    const apply = (posts: FeedPost[]) =>
+      posts.map(p => p.id === postId ? { ...p, isLiked, likesCount } : p);
+    setFeedPosts(apply);
+    setTrendingPosts(apply);
+    setFollowingPosts(apply);
+  }, []);
+
+  const togglePostLike = useCallback(async (postId: number) => {
+    const current =
+      feedPosts.find(p => p.id === postId) ??
+      trendingPosts.find(p => p.id === postId) ??
+      followingPosts.find(p => p.id === postId);
+    if (!current) return;
+    const wasLiked = current.isLiked ?? false;
+    applyLikeState(postId, !wasLiked, current.likesCount + (wasLiked ? -1 : 1));
+    // Unlike has no API endpoint — handled frontend-only
+    if (wasLiked) return;
+    try {
+      await FeedService.interact({ postId, action: 'like' });
+      // Don't sync isLiked from API response — server may toggle on repeat likes,
+      // so trust the optimistic state already applied above
+    } catch {
+      applyLikeState(postId, wasLiked, current.likesCount);
+    }
+  }, [feedPosts, trendingPosts, followingPosts, applyLikeState]);
+
+  const likePost = useCallback(async (postId: number) => {
+    const current =
+      feedPosts.find(p => p.id === postId) ??
+      trendingPosts.find(p => p.id === postId) ??
+      followingPosts.find(p => p.id === postId);
+    if (!current || current.isLiked) return;
+    applyLikeState(postId, true, current.likesCount + 1);
+    try {
+      await FeedService.interact({ postId, action: 'like' });
+    } catch {
+      applyLikeState(postId, false, current.likesCount);
+    }
+  }, [feedPosts, trendingPosts, followingPosts, applyLikeState]);
+
   // ── Memoized Context Values ─────────────────────────────
   const cartValue = useMemo(() => ({ cart, addToCart, removeFromCart, clearCart, cartTotal }), [cart, addToCart, removeFromCart, clearCart, cartTotal]);
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
   const bookingsValue = useMemo(() => ({ bookings, addBooking }), [bookings, addBooking]);
-  const userValue = useMemo(() => ({ user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, logout, refreshSession }), [user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, logout, refreshSession]);
+  const userValue = useMemo(() => ({ user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession }), [user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession]);
   const appDataValue = useMemo(() => ({ artworks, performers, addArtwork, addPerformer }), [artworks, performers, addArtwork, addPerformer]);
+  const feedValue = useMemo(() => ({
+    feedPosts, trendingPosts, followingPosts, feedLoading, feedError,
+    fetchPersonalisedFeed, fetchTrendingFeed, fetchFollowingFeed,
+    createPost, updatePost, deletePost: deleteFeedPost, interactWithPost, togglePostLike, likePost,
+  }), [
+    feedPosts, trendingPosts, followingPosts, feedLoading, feedError,
+    fetchPersonalisedFeed, fetchTrendingFeed, fetchFollowingFeed,
+    createPost, updatePost, deleteFeedPost, interactWithPost, togglePostLike, likePost,
+  ]);
 
   return (
     <UserContext.Provider value={userValue}>
       <AppDataContext.Provider value={appDataValue}>
-        <BookingsContext.Provider value={bookingsValue}>
-          <FavoritesContext.Provider value={favoritesValue}>
-            <CartContext.Provider value={cartValue}>
-              {children}
-            </CartContext.Provider>
-          </FavoritesContext.Provider>
-        </BookingsContext.Provider>
+        <FeedContext.Provider value={feedValue}>
+          <BookingsContext.Provider value={bookingsValue}>
+            <FavoritesContext.Provider value={favoritesValue}>
+              <CartContext.Provider value={cartValue}>
+                {children}
+              </CartContext.Provider>
+            </FavoritesContext.Provider>
+          </BookingsContext.Provider>
+        </FeedContext.Provider>
       </AppDataContext.Provider>
     </UserContext.Provider>
   );
@@ -230,5 +425,11 @@ export const useBookings = () => {
 export const useAppData = () => {
   const context = useContext(AppDataContext);
   if (!context) throw new Error('useAppData must be used within an AppProvider');
+  return context;
+};
+
+export const useFeed = () => {
+  const context = useContext(FeedContext);
+  if (!context) throw new Error('useFeed must be used within an AppProvider');
   return context;
 };

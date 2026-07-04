@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { PerformerCard } from '@/components/PerformerCard';
+import { PerformerCard } from '@/components/artist/PerformerCard';
 import { PERFORMER_TYPES } from '@/constants/data';
 import { useAppData } from '@/context/AppContext';
 import { Performer } from '@/types';
@@ -18,7 +18,7 @@ export default function Hire() {
   }, [performers, active]);
 
   const handlePerformerPress = useCallback((id: number) => {
-    router.push(`/book/${id}` as any);
+    router.push(`/booking/${id}` as any);
   }, []);
 
   const renderPerformerItem = useCallback(({ item }: { item: Performer }) => (

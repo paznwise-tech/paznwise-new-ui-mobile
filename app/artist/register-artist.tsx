@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { GoldButton } from '@/components/GoldButton';
+import { GoldButton } from '@/components/ui/GoldButton';
 import { useUser, useAppData } from '@/context/AppContext';
 
 const PERFORMER_TYPES = [

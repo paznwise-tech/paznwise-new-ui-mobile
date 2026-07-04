@@ -2,28 +2,45 @@ import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { GoldButton } from '@/components/GoldButton';
+import { GoldButton } from '@/components/ui/GoldButton';
+import { AuthService } from '@/services/authService';
 
 export default function RequestOTP() {
   const [identifier, setIdentifier] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSendOTP = useCallback(() => {
-    if (!identifier) {
-      alert('Please enter your email or phone number');
+  const handleSendOTP = useCallback(async () => {
+    const raw = identifier.trim();
+    if (!raw) {
+      setError('Please enter your phone number');
       return;
     }
-    // Mock sending OTP
-    router.push({
-      pathname: '/(auth)/otp',
-      params: { email: identifier, mode: 'login' }
-    } as any);
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length < 10) {
+      setError('Please enter a valid 10-digit phone number');
+      return;
+    }
+    const formattedPhone = raw.startsWith('+') ? raw.replace(/\s/g, '') : `+91${digits.slice(-10)}`;
+    setLoading(true);
+    setError('');
+    try {
+      const { otp: devOtp } = await AuthService.sendOtp(formattedPhone);
+      router.push({
+        pathname: '/(auth)/otp',
+        params: { identifier: formattedPhone, mode: 'login', ...(devOtp ? { devOtp } : {}) },
+      } as any);
+    } catch (err: any) {
+      setError(err?.data?.message ?? err?.message ?? 'Failed to send OTP. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }, [identifier]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
-        {/* Header */}
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -32,30 +49,32 @@ export default function RequestOTP() {
           <View style={styles.decorLine} />
           <Text style={styles.eyebrow}>Login Verification</Text>
           <Text style={styles.title}>Sign In with OTP</Text>
-          <Text style={styles.sub}>Enter your email or phone number to receive a one-time password</Text>
+          <Text style={styles.sub}>Enter your phone number to receive a one-time password</Text>
         </View>
 
-        {/* Form */}
         <View style={styles.form}>
           <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email or Phone</Text>
+            <Text style={styles.label}>Phone Number</Text>
             <TextInput
               value={identifier}
-              onChangeText={setIdentifier}
-              placeholder="you@example.com or +91 98765..."
+              onChangeText={t => { setIdentifier(t); setError(''); }}
+              placeholder="+91 98765 43210"
               placeholderTextColor={Colors.creamFaint}
               autoCapitalize="none"
+              keyboardType="phone-pad"
               style={styles.input}
             />
           </View>
         </View>
 
-        <GoldButton label="Send OTP" onPress={handleSendOTP} size="lg" fullWidth />
+        {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+        <GoldButton label="Send OTP" onPress={handleSendOTP} size="lg" fullWidth loading={loading} disabled={loading} />
 
         <View style={styles.loginRow}>
-           <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
-             <Text style={styles.loginLink}>Use password instead</Text>
-           </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
+            <Text style={styles.loginLink}>Use password instead</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -85,6 +104,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.cream,
   },
+  errorText: { ...Typography.caption, fontSize: 13, color: Colors.error, marginBottom: Spacing.md, textAlign: 'center' },
   loginRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: Spacing.xl },
   loginLink: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
 });
