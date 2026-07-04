@@ -4,8 +4,8 @@ import { View, Text, StyleSheet, Dimensions, FlatList, TouchableOpacity, ViewTok
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { GoldButton } from '@/components/GoldButton';
+import { Colors, Typography, Spacing } from '@/constants/theme';
+import { GoldButton } from '@/components/ui/GoldButton';
 import { StatusBar } from 'expo-status-bar';
 
 const { width, height } = Dimensions.get('window');
@@ -46,7 +46,7 @@ export default function Onboarding() {
     if (active < SLIDES.length - 1) {
       listRef.current?.scrollToIndex({ index: active + 1 });
     } else {
-      router.replace('/(tabs)');
+      router.push('/(auth)/login');
     }
   };
 
@@ -93,7 +93,7 @@ export default function Onboarding() {
 
         {/* CTA */}
         <GoldButton label={active === SLIDES.length - 1 ? 'Get Started' : 'Continue'} onPress={next} size="lg" fullWidth />
-        <TouchableOpacity style={styles.skip} onPress={() => router.replace('/(tabs)')}>
+        <TouchableOpacity style={styles.skip} onPress={() => router.push('/(auth)/login')}>
           <Text style={styles.skipText}>Already have an account? Sign in</Text>
         </TouchableOpacity>
       </View>

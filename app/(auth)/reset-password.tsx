@@ -2,32 +2,51 @@ import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { GoldButton } from '@/components/GoldButton';
+import { GoldButton } from '@/components/ui/GoldButton';
+import { AuthService } from '@/services/authService';
 
 export default function ResetPassword() {
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
+  const [token, setToken]                   = useState('');
+  const [password, setPassword]             = useState('');
+  const [confirmPassword, setConfirmPw]     = useState('');
+  const [showPw, setShowPw]                 = useState(false);
+  const [showConfirmPw, setShowConfirmPw]   = useState(false);
+  const [loading, setLoading]               = useState(false);
+  const [error, setError]                   = useState('');
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
+    if (!token.trim()) {
+      setError('Please paste the reset token from your email');
+      return;
+    }
     if (!password || !confirmPassword) {
-      alert('Please fill out all fields');
+      setError('Please fill out all fields');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters');
       return;
     }
     if (password !== confirmPassword) {
-      alert('Passwords do not match');
+      setError('Passwords do not match');
       return;
     }
-    // Mock updating password
-    alert('Password updated successfully! You can now log in.');
-    router.replace('/(auth)/login');
-  }, [password, confirmPassword]);
+    setLoading(true);
+    setError('');
+    try {
+      await AuthService.resetPassword(token.trim(), password);
+      router.replace('/(auth)/login');
+    } catch (err: any) {
+      setError(err?.data?.message ?? err?.message ?? 'Failed to reset password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [token, password, confirmPassword]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
-        {/* Header */}
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -36,17 +55,30 @@ export default function ResetPassword() {
           <View style={styles.decorLine} />
           <Text style={styles.eyebrow}>Account Recovery</Text>
           <Text style={styles.title}>Reset Password</Text>
-          <Text style={styles.sub}>Enter your new password below.</Text>
+          <Text style={styles.sub}>Paste the token from your reset email, then choose a new password.</Text>
         </View>
 
-        {/* Form */}
         <View style={styles.form}>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>Reset Token (from email)</Text>
+            <TextInput
+              value={token}
+              onChangeText={t => { setToken(t); setError(''); }}
+              placeholder="Paste token here"
+              placeholderTextColor={Colors.creamFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              style={styles.input}
+              multiline={false}
+            />
+          </View>
+
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>New Password</Text>
             <View style={styles.inputRow}>
               <TextInput
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={t => { setPassword(t); setError(''); }}
                 placeholder="Min 8 characters"
                 placeholderTextColor={Colors.creamFaint}
                 secureTextEntry={!showPw}
@@ -63,17 +95,22 @@ export default function ResetPassword() {
             <View style={styles.inputRow}>
               <TextInput
                 value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Min 8 characters"
+                onChangeText={t => { setConfirmPw(t); setError(''); }}
+                placeholder="Re-enter password"
                 placeholderTextColor={Colors.creamFaint}
-                secureTextEntry={!showPw}
+                secureTextEntry={!showConfirmPw}
                 style={[styles.input, { flex: 1 }]}
               />
+              <TouchableOpacity onPress={() => setShowConfirmPw(!showConfirmPw)} style={styles.eyeBtn}>
+                <Text style={styles.eyeText}>{showConfirmPw ? '🙈' : '👁'}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
 
-        <GoldButton label="Reset Password" onPress={handleReset} size="lg" fullWidth />
+        {!!error && <Text style={styles.errorText}>{error}</Text>}
+
+        <GoldButton label="Reset Password" onPress={handleReset} size="lg" fullWidth loading={loading} disabled={loading} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -105,4 +142,5 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   eyeBtn: { padding: Spacing.sm },
   eyeText: { fontSize: 16 },
+  errorText: { ...Typography.caption, fontSize: 13, color: Colors.error, marginBottom: Spacing.md, textAlign: 'center' },
 });

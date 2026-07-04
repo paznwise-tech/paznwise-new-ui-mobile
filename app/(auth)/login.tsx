@@ -1,32 +1,115 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  ScrollView, KeyboardAvoidingView, Platform,
+} from 'react-native';
 import { router } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { GoldButton } from '@/components/GoldButton';
+import { GoldButton } from '@/components/ui/GoldButton';
 import { useUser } from '@/context/AppContext';
+import { AuthService } from '@/services/authService';
+import { AuthStorage } from '@/services/authStorage';
+
+type Panel = 'phone' | 'email';
+
+function mapApiUser(user: any) {
+  return {
+    id: user.id ?? '',
+    name: user.name ?? user.phone ?? user.email ?? 'User',
+    username: user.username ?? '',
+    email: user.email ?? '',
+    avatar: user.avatar ?? '',
+    bio: user.bio ?? '',
+    isVerified: user.isVerified ?? false,
+    isArtist: user.isArtist ?? false,
+    isPerformer: user.isPerformer ?? false,
+    location: user.location,
+    followersCount: user.followersCount ?? 0,
+    followingCount: user.followingCount ?? 0,
+    postsCount: user.postsCount ?? 0,
+  };
+}
 
 export default function Login() {
-  const { login } = useUser();
+  const { loginWithProfile, loadProfile } = useUser();
+  const [panel, setPanel] = useState<Panel>('phone');
+
+  // ── Phone OTP state ─────────────────────────────────────
+  const [phone, setPhone] = useState('');
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+
+  // ── Email / Password state ───────────────────────────────
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
 
-  const handleSignIn = useCallback(() => {
-    if (!identifier) {
-      alert('Please enter your email, phone, or username');
+  const switchPanel = (p: Panel) => {
+    setPanel(p);
+    setPhoneError('');
+    setEmailError('');
+  };
+
+  // ── Send OTP ─────────────────────────────────────────────
+  const handleSendOtp = useCallback(async () => {
+    const raw = phone.trim();
+    if (!raw) {
+      setPhoneError('Please enter your phone number');
       return;
     }
-    // Mock user login
-    login('Amit Kumar', identifier);
-    alert('Logged in successfully!');
-    router.replace('/(tabs)');
-  }, [identifier, login]);
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length < 10) {
+      setPhoneError('Please enter a valid 10-digit phone number');
+      return;
+    }
+    const formattedPhone = raw.startsWith('+') ? raw.replace(/\s/g, '') : `+91${digits.slice(-10)}`;
+    setPhoneLoading(true);
+    setPhoneError('');
+    try {
+      const { otp: devOtp } = await AuthService.sendOtp(formattedPhone);
+      router.push({
+        pathname: '/(auth)/otp',
+        params: { identifier: formattedPhone, mode: 'phone', ...(devOtp ? { devOtp } : {}) },
+      } as any);
+    } catch (err: any) {
+      setPhoneError(err?.data?.message ?? err?.message ?? 'Failed to send OTP. Please try again.');
+    } finally {
+      setPhoneLoading(false);
+    }
+  }, [phone]);
+
+  // ── Email / Password login ───────────────────────────────
+  const handleEmailSignIn = useCallback(async () => {
+    if (!identifier.trim()) {
+      setEmailError('Please enter your email, phone, or username');
+      return;
+    }
+    if (!password) {
+      setEmailError('Please enter your password');
+      return;
+    }
+    setEmailLoading(true);
+    setEmailError('');
+    try {
+      const { user: apiUser, accessToken, refreshToken } = await AuthService.login(identifier.trim(), password);
+      await AuthStorage.setAccessToken(accessToken);
+      if (refreshToken) await AuthStorage.setRefreshToken(refreshToken);
+      loginWithProfile(mapApiUser(apiUser));
+      loadProfile();
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      setEmailError(err?.data?.message ?? err?.message ?? 'Login failed. Please try again.');
+    } finally {
+      setEmailLoading(false);
+    }
+  }, [identifier, password, loginWithProfile]);
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
 
-        {/* Header */}
         <TouchableOpacity style={styles.back} onPress={() => router.back()}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -38,70 +121,135 @@ export default function Login() {
           <Text style={styles.sub}>Access your collection, bookings & more</Text>
         </View>
 
-        {/* Form */}
-        <View style={styles.form}>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Email, Phone, or Username</Text>
-            <TextInput
-              value={identifier}
-              onChangeText={setIdentifier}
-              placeholder="Enter email, phone, or username"
-              placeholderTextColor={Colors.creamFaint}
-              autoCapitalize="none"
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.inputRow}>
-              <TextInput
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={Colors.creamFaint}
-                secureTextEntry={!showPw}
-                style={[styles.input, { flex: 1 }]}
-              />
-              <TouchableOpacity onPress={() => setShowPw(!showPw)} style={styles.eyeBtn}>
-                <Text style={styles.eyeText}>{showPw ? '🙈' : '👁'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.forgotRow} onPress={() => router.push('/(auth)/forgot-password')}>
-            <Text style={styles.forgotText}>Forgot password?</Text>
+        {/* ── Tab Toggle ───────────────────────────────────── */}
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            style={[styles.tab, panel === 'phone' && styles.tabActive]}
+            onPress={() => switchPanel('phone')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, panel === 'phone' && styles.tabTextActive]}>
+              Phone OTP
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, panel === 'email' && styles.tabActive]}
+            onPress={() => switchPanel('email')}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, panel === 'email' && styles.tabTextActive]}>
+              Email / Password
+            </Text>
           </TouchableOpacity>
         </View>
 
-        <GoldButton label="Sign In" onPress={handleSignIn} size="lg" fullWidth />
-        <View style={{ height: Spacing.md }} />
-        <TouchableOpacity style={styles.otpLink} onPress={() => router.push('/(auth)/request-otp')}>
-          <Text style={styles.otpLinkText}>Login with OTP instead</Text>
-        </TouchableOpacity>
+        {/* ── Phone OTP Panel ──────────────────────────────── */}
+        {panel === 'phone' && (
+          <View style={styles.panel}>
+            <Text style={styles.panelHint}>
+              New here? We'll create your account automatically.
+            </Text>
 
-        {/* Divider */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Phone Number</Text>
+              <TextInput
+                value={phone}
+                onChangeText={t => { setPhone(t); setPhoneError(''); }}
+                placeholder="+91 98765 43210"
+                placeholderTextColor={Colors.creamFaint}
+                autoCapitalize="none"
+                keyboardType="phone-pad"
+                style={styles.input}
+              />
+            </View>
+
+            {!!phoneError && <Text style={styles.errorText}>{phoneError}</Text>}
+
+            <GoldButton
+              label="Send OTP"
+              onPress={handleSendOtp}
+              size="lg"
+              fullWidth
+              loading={phoneLoading}
+              disabled={phoneLoading}
+            />
+          </View>
+        )}
+
+        {/* ── Email / Password Panel ───────────────────────── */}
+        {panel === 'email' && (
+          <View style={styles.panel}>
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Email, Phone, or Username</Text>
+              <TextInput
+                value={identifier}
+                onChangeText={t => { setIdentifier(t); setEmailError(''); }}
+                placeholder="Enter email, phone, or username"
+                placeholderTextColor={Colors.creamFaint}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                style={styles.input}
+              />
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  value={password}
+                  onChangeText={t => { setPassword(t); setEmailError(''); }}
+                  placeholder="••••••••"
+                  placeholderTextColor={Colors.creamFaint}
+                  secureTextEntry={!showPw}
+                  style={[styles.input, { flex: 1 }]}
+                />
+                <TouchableOpacity onPress={() => setShowPw(!showPw)} style={styles.eyeBtn}>
+                  <Text style={styles.eyeText}>{showPw ? '🙈' : '👁'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.forgotRow} onPress={() => router.push('/(auth)/forgot-password')}>
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
+
+            {!!emailError && <Text style={styles.errorText}>{emailError}</Text>}
+
+            <GoldButton
+              label="Sign In"
+              onPress={handleEmailSignIn}
+              size="lg"
+              fullWidth
+              loading={emailLoading}
+              disabled={emailLoading}
+            />
+          </View>
+        )}
+
+        {/* ── Social ───────────────────────────────────────── */}
         <View style={styles.divider}>
           <View style={styles.dividerLine} />
           <Text style={styles.dividerText}>or continue with</Text>
           <View style={styles.dividerLine} />
         </View>
 
-        {/* Social */}
         <View style={styles.social}>
-          {['Google', 'Facebook', 'Apple'].map(s => (
+          {(['Google', 'Facebook', 'Apple'] as const).map(s => (
             <TouchableOpacity key={s} style={styles.socialBtn}>
-              <Text style={styles.socialText}>{s === 'Google' ? '🔍' : s === 'Facebook' ? '📘' : '🍎'} {s}</Text>
+              <Text style={styles.socialText}>
+                {s === 'Google' ? '🔍' : s === 'Facebook' ? '📘' : '🍎'} {s}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <View style={styles.signupRow}>
           <Text style={styles.signupPrompt}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => router.push('/(auth)/signup')}>
-            <Text style={styles.signupLink}>Create one</Text>
+          <TouchableOpacity onPress={() => switchPanel('phone')}>
+            <Text style={styles.signupLink}>Use phone OTP</Text>
           </TouchableOpacity>
         </View>
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -117,9 +265,37 @@ const styles = StyleSheet.create({
   eyebrow: { ...Typography.label, marginBottom: Spacing.xs },
   title: { ...Typography.display, fontSize: 36, marginBottom: Spacing.sm },
   sub: { ...Typography.caption, fontSize: 14, color: Colors.creamDim },
-  form: { gap: Spacing.md, marginBottom: Spacing.xl },
+
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: 4,
+    marginBottom: Spacing.xl,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 11,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+  },
+  tabActive: { backgroundColor: Colors.gold },
+  tabText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.creamFaint },
+  tabTextActive: { color: Colors.bg },
+
+  panel: { gap: Spacing.md, marginBottom: Spacing.xl },
+  panelHint: {
+    ...Typography.caption,
+    fontSize: 13,
+    color: Colors.creamDim,
+    textAlign: 'center',
+    marginBottom: Spacing.sm,
+  },
   fieldGroup: { gap: Spacing.xs },
   label: { ...Typography.label, fontSize: 10, color: Colors.creamDim },
+
   input: {
     backgroundColor: Colors.bgInput,
     borderWidth: 1,
@@ -135,7 +311,9 @@ const styles = StyleSheet.create({
   eyeText: { fontSize: 16 },
   forgotRow: { alignItems: 'flex-end' },
   forgotText: { ...Typography.caption, fontSize: 13, color: Colors.gold },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginVertical: Spacing.lg },
+  errorText: { ...Typography.caption, fontSize: 13, color: Colors.error, textAlign: 'center' },
+
+  divider: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.lg },
   dividerLine: { flex: 1, height: 1, backgroundColor: Colors.border },
   dividerText: { ...Typography.caption, fontSize: 12 },
   social: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.xl },
@@ -147,8 +325,6 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   socialText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.cream },
-  otpLink: { alignItems: 'center' },
-  otpLinkText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
   signupRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
   signupPrompt: { ...Typography.caption, fontSize: 14, color: Colors.creamDim },
   signupLink: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },

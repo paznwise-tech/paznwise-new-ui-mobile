@@ -1,39 +1,92 @@
 import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { FullPhotoModal } from '@/components/ui/FullPhotoModal';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { GoldButton } from '@/components/GoldButton';
+import { GoldButton } from '@/components/ui/GoldButton';
 import { useUser } from '@/context/AppContext';
+import { UserService } from '@/services/userService';
+
+const ROLES = ['ARTIST', 'BUYER', 'ORGANIZER'] as const;
+type Role = typeof ROLES[number];
+
+const ROLE_LABELS: Record<Role, string> = {
+  ARTIST: 'Artist',
+  BUYER: 'Buyer',
+  ORGANIZER: 'Organizer',
+};
 
 export default function EditProfile() {
-  const { user, updateUserProfile, deleteProfile } = useUser();
+  const { user, updateUserProfile, logout } = useUser();
 
   const [name, setName] = useState(user.name);
   const [username, setUsername] = useState(user.username);
   const [bio, setBio] = useState(user.bio);
-  const [location, setLocation] = useState(user.location || '');
+  const [role, setRole] = useState<Role | ''>((user.role as Role) || '');
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [photoVisible, setPhotoVisible] = useState(false);
+  const [avatarMime, setAvatarMime] = useState<string>('image/jpeg');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSave = useCallback(() => {
-    // PUT /api/user/profile mock
-    updateUserProfile({ name, username, bio, location });
-    alert('Profile updated successfully!');
-    router.back();
-  }, [name, username, bio, location, updateUserProfile]);
+  const pickImage = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setAvatarUri(result.assets[0].uri);
+      setAvatarMime(result.assets[0].mimeType ?? 'image/jpeg');
+    }
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const updated = await UserService.updateProfile({
+        name,
+        username,
+        bio,
+        ...(role ? { role } : {}),
+        ...(avatarUri ? { avatarUri, avatarMimeType: avatarMime } : {}),
+      });
+      updateUserProfile(updated);
+      router.back();
+    } catch (err: any) {
+      setError(err?.data?.message ?? err?.message ?? 'Failed to save profile.');
+    } finally {
+      setSaving(false);
+    }
+  }, [name, username, bio, role, avatarUri, avatarMime, updateUserProfile]);
 
   const handleDelete = useCallback(() => {
-    // DELETE /api/user/profile mock
     Alert.alert(
       'Delete Account',
       'Are you sure you want to delete your account? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => {
-          deleteProfile();
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await UserService.deleteMyProfile();
+          } catch {}
+          await logout();
           router.replace('/(auth)/login');
         } },
       ]
     );
-  }, [deleteProfile]);
+  }, [logout]);
+
+  const displayAvatar = avatarUri ?? user.avatar;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -46,16 +99,35 @@ export default function EditProfile() {
       </View>
 
       <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        
+
+        {/* Avatar picker */}
+        <View style={styles.avatarSection}>
+          <TouchableOpacity style={styles.avatarWrapper} onPress={pickImage} onLongPress={() => setPhotoVisible(true)} delayLongPress={300} activeOpacity={0.8}>
+            {displayAvatar ? (
+              <Image source={{ uri: displayAvatar }} style={styles.avatar} contentFit="cover" />
+            ) : (
+              <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                <Text style={styles.avatarInitial}>
+                  {user.name?.charAt(0)?.toUpperCase() || '?'}
+                </Text>
+              </View>
+            )}
+            <View style={styles.editAvatarBtn}>
+              <Text style={styles.editAvatarIcon}>✎</Text>
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.avatarHint}>Tap to change · Hold to view</Text>
+          <FullPhotoModal uri={displayAvatar ?? undefined} visible={photoVisible} onClose={() => setPhotoVisible(false)} />
+        </View>
+
         <View style={styles.form}>
           {[
             { label: 'Name', value: name, set: setName, multiline: false },
             { label: 'Username', value: username, set: setUsername, multiline: false },
             { label: 'Bio', value: bio, set: setBio, multiline: true },
-            { label: 'Location', value: location, set: setLocation, multiline: false },
           ].map(f => (
             <View key={f.label} style={styles.fieldGroup}>
-              <Text style={styles.label}>{f.label}</Text>
+              <Text style={styles.label}>{f.label.toUpperCase()}</Text>
               <TextInput
                 value={f.value}
                 onChangeText={f.set}
@@ -65,9 +137,27 @@ export default function EditProfile() {
               />
             </View>
           ))}
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>ROLE</Text>
+            <View style={styles.roleRow}>
+              {ROLES.map(r => (
+                <TouchableOpacity
+                  key={r}
+                  style={[styles.roleBtn, role === r && styles.roleBtnActive]}
+                  onPress={() => setRole(r)}
+                >
+                  <Text style={[styles.roleBtnText, role === r && styles.roleBtnTextActive]}>
+                    {ROLE_LABELS[r]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
         </View>
 
-        <GoldButton label="Save Changes" onPress={handleSave} size="lg" fullWidth />
+        {!!error && <Text style={styles.errorText}>{error}</Text>}
+        <GoldButton label="Save Changes" onPress={handleSave} size="lg" fullWidth loading={saving} disabled={saving} />
 
         <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
           <Text style={styles.deleteBtnText}>Delete Account</Text>
@@ -85,6 +175,19 @@ const styles = StyleSheet.create({
   backIcon: { color: Colors.gold, fontSize: 22 },
   headerTitle: { ...Typography.bodyBold, fontSize: 18 },
   content: { padding: Spacing.lg, paddingBottom: 40 },
+  avatarSection: { alignItems: 'center', marginBottom: Spacing.xl },
+  avatarWrapper: { position: 'relative' },
+  avatar: { width: 96, height: 96, borderRadius: 48, borderWidth: 2, borderColor: Colors.gold },
+  avatarPlaceholder: { backgroundColor: Colors.bgCard, justifyContent: 'center', alignItems: 'center' },
+  avatarInitial: { ...Typography.heading, fontSize: 36, color: Colors.gold },
+  editAvatarBtn: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: Colors.gold, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: Colors.bg,
+  },
+  editAvatarIcon: { fontSize: 14, color: Colors.bg },
+  avatarHint: { ...Typography.caption, fontSize: 12, color: Colors.creamDim, marginTop: Spacing.sm },
   form: { gap: Spacing.md, marginBottom: Spacing.xxl },
   fieldGroup: { gap: Spacing.xs },
   label: { ...Typography.label, fontSize: 10, color: Colors.creamDim },
@@ -98,6 +201,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.cream,
   },
+  roleRow: { flexDirection: 'row', gap: Spacing.sm },
+  roleBtn: { flex: 1, paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', backgroundColor: Colors.bgInput },
+  roleBtnActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '20' },
+  roleBtnText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.creamDim },
+  roleBtnTextActive: { color: Colors.gold },
   deleteBtn: { marginTop: Spacing.xxl, alignItems: 'center', padding: Spacing.md },
   deleteBtnText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.error },
+  errorText: { ...Typography.caption, fontSize: 13, color: Colors.error, marginBottom: Spacing.sm, textAlign: 'center' },
 });

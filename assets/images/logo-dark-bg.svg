@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80">
+  <!-- Dark background -->
+  <rect x="0" y="0" width="320" height="80" fill="#0D1B2A"/>
+
+  <!-- Icon: slightly lighter rounded square -->
+  <rect x="8" y="8" width="64" height="64" rx="12" ry="12" fill="#1A2D42"/>
+
+  <!-- Dot grid 4×4 -->
+  <!-- Row 1 -->
+  <rect x="18" y="18" width="9" height="9" rx="2" fill="#C9A84C"/>
+  <rect x="31" y="18" width="9" height="9" rx="2" fill="#C9A84C"/>
+  <rect x="44" y="18" width="9" height="9" rx="2" fill="#C9A84C"/>
+  <rect x="57" y="18" width="9" height="9" rx="2" fill="#2A4A6B"/>
+
+  <!-- Row 2 -->
+  <rect x="18" y="31" width="9" height="9" rx="2" fill="#C9A84C"/>
+  <rect x="31" y="31" width="9" height="9" rx="2" fill="#C9A84C"/>
+  <rect x="44" y="31" width="9" height="9" rx="2" fill="#2A4A6B"/>
+  <rect x="57" y="31" width="9" height="9" rx="2" fill="#2A4A6B"/>
+
+  <!-- Row 3 -->
+  <rect x="18" y="44" width="9" height="9" rx="2" fill="#C9A84C"/>
+  <rect x="31" y="44" width="9" height="9" rx="2" fill="#2A4A6B"/>
+  <rect x="44" y="44" width="9" height="9" rx="2" fill="#2A4A6B"/>
+  <rect x="57" y="44" width="9" height="9" rx="2" fill="#C9A84C"/>
+
+  <!-- Row 4 -->
+  <rect x="18" y="57" width="9" height="9" rx="2" fill="#2A4A6B"/>
+  <rect x="31" y="57" width="9" height="9" rx="2" fill="#2A4A6B"/>
+  <rect x="44" y="57" width="9" height="9" rx="2" fill="#C9A84C"/>
+  <rect x="57" y="57" width="9" height="9" rx="2" fill="#C9A84C"/>
+
+  <!-- App name -->
+  <text
+    x="88"
+    y="52"
+    font-family="'Arial Black', 'Arial', sans-serif"
+    font-size="34"
+    font-weight="900"
+    letter-spacing="3"
+    fill="#FFFFFF"
+  >PAZNWISE</text>
+</svg>

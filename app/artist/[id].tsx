@@ -4,8 +4,8 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { ArtCard } from '@/components/ArtCard';
-import { StarRow } from '@/components/StarRow';
+import { ArtCard } from '@/components/product/ArtCard';
+import { StarRow } from '@/components/ui/StarRow';
 import { ARTWORKS } from '@/constants/data';
 
 const { width } = Dimensions.get('window');
@@ -43,7 +43,7 @@ export default function ArtistProfile() {
             <TouchableOpacity style={[styles.followBtn, following && styles.followingBtn]} onPress={() => setFollowing(!following)}>
               <Text style={[styles.followText, following && { color: Colors.creamDim }]}>{following ? 'Following' : 'Follow'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.msgBtn} onPress={() => router.push('/messages')}>
+            <TouchableOpacity style={styles.msgBtn} onPress={() => router.push('/messages/index' as any)}>
               <Text style={styles.msgIcon}>💬</Text>
             </TouchableOpacity>
           </View>
@@ -76,7 +76,7 @@ export default function ArtistProfile() {
             columnWrapperStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}
             contentContainerStyle={{ gap: Spacing.sm, paddingBottom: Spacing.md }}
             keyExtractor={i => String(i.id)}
-            renderItem={({ item }) => <ArtCard item={item} onPress={() => router.push(`/artwork/${item.id}` as any)} />}
+            renderItem={({ item }) => <ArtCard item={item} onPress={() => router.push(`/product/${item.id}` as any)} />}
           />
         )}
 

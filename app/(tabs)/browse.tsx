@@ -1,65 +1,54 @@
-import { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity } from 'react-native';
+import { useState, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { ArtCard } from '@/components/ArtCard';
+import ProductCard from '@/components/product/ProductCard';
 import { CATEGORIES } from '@/constants/data';
-import { useAppData } from '@/context/AppContext';
-import { Artwork } from '@/types';
+import { useMarketplaceProducts } from '@/hooks/useProducts';
 
-const SORT_OPTIONS = ['Newest', 'Price ↑', 'Price ↓', 'Top Rated'];
+const SORT_OPTIONS = ['Newest', 'Price ↑', 'Price ↓'];
 
 export default function Browse() {
-  const { artworks } = useAppData();
   const [q, setQ]             = useState('');
   const [activeCategory, setCat] = useState('All');
   const [sort, setSort]       = useState('Newest');
   const [showSort, setShowSort] = useState(false);
 
+  const {
+    products,
+    loading,
+    error,
+    loadMore,
+    refresh,
+  } = useMarketplaceProducts(20, activeCategory === 'All' ? undefined : activeCategory.toLowerCase());
+
   const filtered = useMemo(() => {
-    let result = artworks.filter(a => {
-      const matchQ = !q || a.title.toLowerCase().includes(q.toLowerCase()) || a.artist.toLowerCase().includes(q.toLowerCase());
-      const matchCat = activeCategory === 'All' || a.category === activeCategory;
-      return matchQ && matchCat;
+    let result = products.filter(p => {
+      if (!q) return true;
+      const lower = q.toLowerCase();
+      return (
+        p.title.toLowerCase().includes(lower) ||
+        (p.brand?.toLowerCase() ?? '').includes(lower)
+      );
     });
 
-    if (sort === 'Price ↑') {
-      result = [...result].sort((a, b) => a.price - b.price);
-    } else if (sort === 'Price ↓') {
-      result = [...result].sort((a, b) => b.price - a.price);
-    } else if (sort === 'Top Rated') {
-      result = [...result].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-    } else {
-      // Newest (default reverse array to show newly added items first)
-      result = [...result];
-    }
+    if (sort === 'Price ↑') result = [...result].sort((a, b) => a.price - b.price);
+    else if (sort === 'Price ↓') result = [...result].sort((a, b) => b.price - a.price);
     return result;
-  }, [artworks, q, activeCategory, sort]);
-
-  const handleArtPress = useCallback((id: number) => {
-    router.push(`/artwork/${id}` as any);
-  }, []);
-
-  const renderArtItem = useCallback(({ item }: { item: Artwork }) => (
-    <ArtCard item={item} onPress={() => handleArtPress(item.id)} />
-  ), [handleArtPress]);
-
-  const renderCategoryItem = useCallback(({ item }: { item: typeof CATEGORIES[0] }) => (
-    <TouchableOpacity
-      style={[styles.catChip, activeCategory === item.label && { backgroundColor: item.color + '22', borderColor: item.color }]}
-      onPress={() => setCat(item.label)}
-    >
-      <Text style={[styles.catText, activeCategory === item.label && { color: item.color }]}>{item.label}</Text>
-    </TouchableOpacity>
-  ), [activeCategory]);
+  }, [products, q, sort]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }}>
         <View style={styles.header}>
-          <Text style={styles.title}>Browse Art</Text>
-          <Text style={styles.count}>{filtered.length} artworks</Text>
+          <Text style={styles.title}>Browse Products</Text>
+          <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+            <Text style={styles.count}>{filtered.length} items</Text>
+            <TouchableOpacity onPress={() => router.push('/product/marketplace' as any)}>
+              <Text style={styles.marketplaceLink}>Marketplace →</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search */}
@@ -68,7 +57,7 @@ export default function Browse() {
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
               value={q} onChangeText={setQ}
-              placeholder="Search artworks, artists…"
+              placeholder="Search products, brands…"
               placeholderTextColor={Colors.creamFaint}
               style={styles.searchInput}
             />
@@ -83,44 +72,87 @@ export default function Browse() {
         {showSort && (
           <View style={styles.sortDropdown}>
             {SORT_OPTIONS.map(s => (
-              <TouchableOpacity key={s} style={[styles.sortOption, sort === s && styles.sortOptionActive]} onPress={() => { setSort(s); setShowSort(false); }}>
+              <TouchableOpacity
+                key={s}
+                style={[styles.sortOption, sort === s && styles.sortOptionActive]}
+                onPress={() => { setSort(s); setShowSort(false); }}
+              >
                 <Text style={[styles.sortOptionText, sort === s && { color: Colors.gold }]}>{s}</Text>
               </TouchableOpacity>
             ))}
           </View>
         )}
 
-        {/* Category pills */}
+        {/* Category chips */}
         <FlatList
           data={CATEGORIES}
           horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.catList}
           keyExtractor={i => i.label}
-          renderItem={renderCategoryItem}
-          initialNumToRender={7}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={[styles.catChip, activeCategory === item.label && { backgroundColor: item.color + '22', borderColor: item.color }]}
+              onPress={() => setCat(item.label)}
+            >
+              <Text style={[styles.catText, activeCategory === item.label && { color: item.color }]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          )}
         />
       </SafeAreaView>
 
-      {/* Grid */}
-      <FlatList
-        data={filtered}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.grid}
-        showsVerticalScrollIndicator={false}
-        keyExtractor={i => String(i.id)}
-        renderItem={renderArtItem}
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
-        windowSize={4}
-        removeClippedSubviews={true}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No artworks found</Text>
-            <Text style={styles.emptyText}>Try a different search or category</Text>
-          </View>
-        }
-      />
+      {error && !products.length ? (
+        <View style={styles.center}>
+          <Text style={{ color: Colors.error, marginBottom: Spacing.md }}>{error}</Text>
+          <TouchableOpacity onPress={refresh}>
+            <Text style={{ color: Colors.gold }}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+          keyExtractor={i => i.id}
+          renderItem={({ item }) => (
+            <View style={styles.cardWrapper}>
+              <ProductCard product={item} />
+            </View>
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading && products.length === 0}
+              onRefresh={refresh}
+              tintColor={Colors.gold}
+            />
+          }
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListHeaderComponent={
+            loading && products.length === 0 ? (
+              <View style={styles.center}>
+                <ActivityIndicator color={Colors.gold} size="large" />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.empty}>
+                <Text style={styles.emptyTitle}>No products found</Text>
+                <Text style={styles.emptyText}>Try a different search or category</Text>
+              </View>
+            ) : null
+          }
+          ListFooterComponent={
+            loading && products.length > 0 ? (
+              <ActivityIndicator color={Colors.gold} style={{ padding: Spacing.lg }} />
+            ) : null
+          }
+        />
+      )}
     </View>
   );
 }
@@ -129,6 +161,8 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: Spacing.md, paddingTop: Spacing.sm, paddingBottom: Spacing.xs, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   title: { ...Typography.display, fontSize: 26 },
   count: { ...Typography.caption, fontSize: 12 },
+  marketplaceLink: { ...Typography.caption, fontSize: 12, color: Colors.gold },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl, minHeight: 200 },
   searchRow: { flexDirection: 'row', gap: Spacing.sm, paddingHorizontal: Spacing.md, marginBottom: Spacing.sm },
   searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, backgroundColor: Colors.bgInput, borderRadius: Radius.full, paddingHorizontal: Spacing.md, borderWidth: 1, borderColor: Colors.border, height: 44 },
   searchIcon: { fontSize: 14 },
@@ -145,6 +179,7 @@ const styles = StyleSheet.create({
   catText: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
   grid: { paddingHorizontal: Spacing.md, paddingBottom: 100 },
   row: { gap: Spacing.sm, justifyContent: 'space-between' },
+  cardWrapper: { flex: 1, maxWidth: '48.5%', marginBottom: Spacing.sm },
   empty: { padding: Spacing.xxl, alignItems: 'center' },
   emptyTitle: { ...Typography.heading, fontSize: 18, marginBottom: Spacing.sm },
   emptyText: { ...Typography.caption, fontSize: 14 },

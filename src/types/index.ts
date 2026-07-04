@@ -80,10 +80,146 @@ export interface UserProfile {
   isVerified: boolean;
   isArtist: boolean;
   isPerformer: boolean;
+  role?: string;
   location?: string;
   followersCount: number;
   followingCount: number;
   postsCount: number;
+  totalLikes?: number;
   mutualFollowersCount?: number;
   isFollowing?: boolean;
+}
+
+// ─────────────────────────────────────────────────────────
+// API Models (From Swagger)
+// ─────────────────────────────────────────────────────────
+
+export type ProductStatus = 'PUBLISHED' | 'DRAFT' | 'OUT_OF_STOCK' | 'APPROVED';
+export type ProductType = 'PHYSICAL' | 'DIGITAL';
+export type DeliveryType = 'MANUAL' | 'DOWNLOAD' | 'NONE';
+export type EditionType = 'LIMITED_EDITION' | 'OPEN_EDITION' | 'UNIQUE';
+export type ShippingPreference = 'FREE_SHIPPING' | 'BUYER_PAYS_SHIPPING' | 'LOCAL_PICKUP_ONLY';
+export type LicenseType = 'PERSONAL_USE' | 'COMMERCIAL_USE' | 'EXCLUSIVE';
+
+export interface ProductDimensions {
+  length?: number;
+  width?: number;
+  height?: number;
+  unit?: string;
+}
+
+export interface ProductVariant {
+  name?: string;
+  size?: string;
+  color?: string;
+  price?: number;
+  stock?: number;
+}
+
+export interface DigitalAsset {
+  fileUrl?: string;
+  fileSizeBytes?: string;
+  fileType?: string;
+  deliveryMethod?: string;
+  licenseType?: LicenseType;
+  downloadLimit?: number;
+  downloadCount?: number;
+  downloadExpiryDays?: number;
+  watermarkApplied?: boolean;
+}
+
+export interface ProductResponse {
+  id: string;
+  sellerId: string;
+  linkedPostId: number | null;
+  title: string;
+  description: string;
+  slug: string;
+  sku: string;
+  images: string[];           // legacy — always empty
+  productImages: string[];    // S3 image URLs array
+  thumbnailUrl?: string;      // single cover image (preferred)
+  tags: string[];
+  price: number;
+  comparePrice: number | null;
+  stock: number;
+  brand: string | null;
+  weight: number | null;
+  dimensions: ProductDimensions | null;
+  variants: ProductVariant[] | null;
+  productType: ProductType;
+  requiresShipping: boolean;
+  isDownloadable: boolean;
+  deliveryType: DeliveryType;
+  shippingCharge: number | null;
+  cashOnDelivery: boolean;
+  returnPolicy: string | null;
+  warranty: string | null;
+  categoryId: string | null;
+  // Art-specific fields
+  medium?: string | null;
+  artStyle?: string | null;
+  yearCreated?: number | null;
+  editionType?: EditionType | null;
+  includeCertificate?: boolean;
+  shippingPreference?: ShippingPreference | null;
+  digitalAsset?: DigitalAsset | null;
+  status: ProductStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductInput {
+  title: string;
+  description: string;
+  images: any;
+  price: number;
+  stock: number;
+  productType?: ProductType;
+  isDownloadable?: boolean;
+  requiresShipping?: boolean;
+  deliveryType?: DeliveryType;
+  tags?: string; // JSON-stringified array
+  comparePrice?: number;
+  sku?: string;
+  categoryId?: string;
+  brand?: string;
+  weight?: number;
+  dimensions?: string; // JSON-stringified object
+  variants?: string; // JSON-stringified array
+  shippingCharge?: number;
+  cashOnDelivery?: boolean;
+  returnPolicy?: string;
+  warranty?: string;
+  status?: ProductStatus;
+  linkedPostId?: number;
+  medium?: string;
+  artStyle?: string;
+  yearCreated?: number;
+  editionType?: EditionType;
+  includeCertificate?: boolean;
+  shippingPreference?: ShippingPreference;
+}
+
+export type UpdateProductInput = Partial<CreateProductInput>;
+
+// Cursor-based list response for GET /api/products
+export interface ProductListResponse {
+  success: boolean;
+  data: ProductResponse[];
+  nextCursor: string | null;
+  count: number;
+}
+
+// Simple list response for GET /api/products/seller/me
+export interface ProductSellerListResponse {
+  success: boolean;
+  data: ProductResponse[];
+  count: number;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  message: string;
+  data: T;
 }

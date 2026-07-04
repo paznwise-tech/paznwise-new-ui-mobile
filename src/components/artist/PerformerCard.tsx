@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Radius, Spacing } from '@/constants/theme';
-import { StarRow } from '@/components/StarRow';
+import { StarRow } from '@/components/ui/StarRow';
 import { Performer } from '@/types';
 
 interface PerformerCardProps {
