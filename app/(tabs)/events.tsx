@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { EventCard } from '@/components/events/EventCard';
@@ -66,7 +67,17 @@ export default function Events() {
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
         keyExtractor={i => String(i.id)}
-        renderItem={({ item }) => <EventCard item={item} onPress={() => {}} />}
+        renderItem={({ item }) => (
+          <EventCard
+            item={item}
+            onPress={() =>
+              router.push({
+                pathname: '/events/[id]' as any,
+                params: { id: String(item.id) },
+              })
+            }
+          />
+        )}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No events found</Text>

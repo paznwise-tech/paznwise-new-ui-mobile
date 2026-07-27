@@ -9,7 +9,12 @@ import { useCallback, useMemo, useEffect, useState } from 'react';
 import { FullPhotoModal } from '@/components/ui/FullPhotoModal';
 
 const MENU_ITEMS = [
-  { icon: '🖼', label: 'My Orders',        sub: 'Track your artwork purchases',    route: '/product/cart' },
+  { icon: '🖼', label: 'My Orders',        sub: 'Track your artwork purchases',    route: '/profile/orders' },
+  { icon: '❤️', label: 'Favorites',        sub: 'Your saved wishlist artworks',    route: '/profile/favorites' },
+  { icon: '🎟️', label: 'Event Tickets',    sub: 'Your booked event passes',        route: '/profile/event-bookings' },
+  { icon: '📦', label: 'My Rentals',       sub: 'Artwork rental requests & history', route: '/profile/rentals' },
+  { icon: '⭐', label: 'My Reviews',       sub: 'Artworks & artist reviews written by you', route: '/profile/reviews' },
+  { icon: '🏷️', label: 'Coupons & Offers', sub: 'Available promo codes & discounts', route: '/profile/coupons' },
   { icon: '🎨', label: 'Sell Artwork',      sub: 'List, manage & sell your art',   route: '/product/my-listings' },
   { icon: '📸', label: 'My Posts',           sub: 'Manage, edit & share your artwork',     route: '/feed/my-posts' },
   { icon: '🎵', label: 'My Bookings',      sub: 'Performer bookings & events',     route: '/booking/my-bookings' },
