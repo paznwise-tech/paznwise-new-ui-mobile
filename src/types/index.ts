@@ -223,3 +223,110 @@ export interface ApiResponse<T> {
   message: string;
   data: T;
 }
+
+export interface Address {
+  id: string;
+  userId: string;
+  name: string;
+  phone: string;
+  street: string;
+  city: string;
+  state: string;
+  country: string;
+  zipCode: string;
+  isDefault: boolean;
+}
+
+export interface AddressPayload {
+  name: string;
+  phone: string;
+  street: string;
+  city: string;
+  state: string;
+  country: string;
+  zipCode: string;
+  isDefault?: boolean;
+}
+
+export interface OrderItem {
+  id: string | number;
+  productId?: string | number;
+  productName?: string;
+  title?: string;
+  price?: number;
+  quantity?: number;
+  totalPrice?: number;
+  productImage?: string;
+  imageUrl?: string;
+  product?: {
+    id: string | number;
+    title: string;
+    images?: string[];
+    productImages?: string[];
+    price: number;
+    seller?: {
+      name: string;
+      username: string;
+    };
+  };
+}
+
+export interface Order {
+  id: string | number;
+  orderId?: string | number;
+  invoiceNumber?: string;
+  totalAmount?: number;
+  subtotal?: number;
+  shippingCharge?: number;
+  discount?: number;
+  paymentMethod?: string;
+  paymentStatus?: string;
+  status: string;
+  createdAt: string;
+  estimatedDelivery?: string;
+  items?: OrderItem[];
+  orderItems?: OrderItem[];
+  products?: OrderItem[];
+  shippingAddress?: Address;
+  buyer?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  artist?: {
+    studio?: string;
+    artistName?: string;
+  };
+  [key: string]: any;
+}
+
+export interface Coupon {
+  id: string | number;
+  code: string;
+  title?: string;
+  description?: string;
+  discountType: 'PERCENTAGE' | 'FIXED';
+  value: number;
+  minOrderValue?: number;
+  maxDiscount?: number;
+  validUntil?: string;
+}
+
+export interface CheckoutSummary {
+  subtotal: number;
+  shipping: number;
+  discount: number;
+  grandTotal: number;
+  items: Array<{
+    productId: string;
+    title: string;
+    price: number;
+    quantity: number;
+    image?: string;
+  }>;
+  appliedCoupon?: {
+    code: string;
+    discountApplied: number;
+  } | null;
+}
+

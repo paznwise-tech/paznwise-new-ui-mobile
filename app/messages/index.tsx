@@ -35,7 +35,16 @@ export default function Messages() {
         showsVerticalScrollIndicator={false}
         keyExtractor={i => String(i.id)}
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.convo} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.convo}
+            activeOpacity={0.8}
+            onPress={() =>
+              router.push({
+                pathname: '/messages/[id]' as any,
+                params: { id: String(item.id) },
+              })
+            }
+          >
             <View style={styles.avatarWrap}>
               <Image source={{ uri: item.img }} style={styles.avatar} contentFit="cover" />
               <View style={styles.onlineDot} />
