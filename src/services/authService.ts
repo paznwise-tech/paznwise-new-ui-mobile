@@ -127,4 +127,20 @@ export const AuthService = {
     });
     return res.data;
   },
+
+  /** Social Authentication (Google, Facebook, Apple) */
+  async socialAuth(payload: {
+    provider: string;
+    token?: string;
+    email?: string;
+    name?: string;
+    idToken?: string;
+  }): Promise<LoginResponse> {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/api/auth/social', {
+      method: 'POST',
+      requiresAuth: false,
+      body: JSON.stringify(payload),
+    });
+    return res.data;
+  },
 };

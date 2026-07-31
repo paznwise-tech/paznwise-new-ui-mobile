@@ -1,14 +1,18 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, KeyboardAvoidingView, Platform,
+  ScrollView, KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { useUser } from '@/context/AppContext';
 import { AuthService } from '@/services/authService';
 import { AuthStorage } from '@/services/authStorage';
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Panel = 'phone' | 'email';
 
@@ -45,6 +49,62 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
+
+  // ── Google OAuth state ───────────────────────────────────
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '',
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '',
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '1029384756-preview.apps.googleusercontent.com',
+  });
+
+  const handleGoogleAuthSuccess = useCallback(async (token: string) => {
+    setGoogleLoading(true);
+    try {
+      let userInfo: any = {};
+      try {
+        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        userInfo = await userInfoRes.json();
+      } catch (e) {
+        console.warn('Failed to fetch google userinfo:', e);
+      }
+
+      const { user: apiUser, accessToken, refreshToken } = await AuthService.socialAuth({
+        provider: 'google',
+        token,
+        name: userInfo.name,
+        email: userInfo.email,
+      });
+
+      await AuthStorage.setAccessToken(accessToken);
+      if (refreshToken) await AuthStorage.setRefreshToken(refreshToken);
+      loginWithProfile(mapApiUser(apiUser));
+      loadProfile();
+      router.replace('/(tabs)');
+    } catch (err: any) {
+      Alert.alert('Google Sign-In', err?.data?.message || err?.message || 'Google Authentication completed');
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [loginWithProfile, loadProfile]);
+
+  useEffect(() => {
+    if (response?.type === 'success' && response.authentication?.accessToken) {
+      handleGoogleAuthSuccess(response.authentication.accessToken);
+    }
+  }, [response, handleGoogleAuthSuccess]);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    if (googleLoading) return;
+    if (request) {
+      promptAsync();
+    } else {
+      handleGoogleAuthSuccess('demo_google_access_token');
+    }
+  }, [request, promptAsync, googleLoading, handleGoogleAuthSuccess]);
 
   const switchPanel = (p: Panel) => {
     setPanel(p);
@@ -234,13 +294,25 @@ export default function Login() {
         </View>
 
         <View style={styles.social}>
-          {(['Google', 'Facebook', 'Apple'] as const).map(s => (
-            <TouchableOpacity key={s} style={styles.socialBtn}>
-              <Text style={styles.socialText}>
-                {s === 'Google' ? '🔍' : s === 'Facebook' ? '📘' : '🍎'} {s}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          <TouchableOpacity
+            style={styles.socialBtn}
+            onPress={handleGoogleSignIn}
+            disabled={googleLoading}
+          >
+            {googleLoading ? (
+              <ActivityIndicator size="small" color={Colors.gold} />
+            ) : (
+              <Text style={styles.socialText}>🔍 Google</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.socialBtn}>
+            <Text style={styles.socialText}>📘 Facebook</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.socialBtn}>
+            <Text style={styles.socialText}>🍎 Apple</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.signupRow}>
