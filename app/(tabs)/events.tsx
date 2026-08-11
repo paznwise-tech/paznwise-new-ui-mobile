@@ -83,7 +83,7 @@ export default function Events() {
         />
       </SafeAreaView>
 
-      {loading ? (
+
         <View style={styles.center}>
           <ActivityIndicator color={Colors.gold} size="large" />
         </View>

@@ -240,9 +240,8 @@ export default function Home() {
       <SafeAreaView edges={['top']} style={styles.safeTop}>
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.headerEyebrow}>Good morning</Text>
-            <Text style={styles.headerTitle}>Paznwise</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <BrandLogo size={28} />
           </View>
           <View style={styles.headerRight}>
             <TouchableOpacity style={styles.searchBtn} onPress={() => router.push('/(tabs)/browse')}>
@@ -282,10 +281,32 @@ export default function Home() {
           </View>
         )}
 
-        {/* Trending Feed Posts */}
+        {/* Trending Now (Products) */}
+        {freshProducts.length > 0 && (
+          <>
+            <SectionHeader title="Trending Now" subtitle="What's popular on Paznwise" onSeeAll={() => router.push('/(tabs)/browse')} />
+            <FlatList
+              data={freshProducts}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.hList}
+              keyExtractor={i => i.id}
+              renderItem={({ item }) => (
+                <View style={{ width: 160 }}>
+                  <ProductCard product={item} />
+                </View>
+              )}
+              initialNumToRender={3}
+              maxToRenderPerBatch={3}
+              windowSize={3}
+            />
+          </>
+        )}
+
+        {/* Buzz Posts */}
         {trendingPosts.length > 0 && (
           <>
-            <SectionHeader title="Trending Now" subtitle="What's popular on Paznwise" />
+            <SectionHeader title="Buzz Posts" subtitle="What's happening in the community" onSeeAll={() => router.push('/feed')} />
             <FlatList
               data={trendingPosts.slice(0, 10)}
               horizontal
@@ -311,28 +332,6 @@ export default function Home() {
               contentContainerStyle={styles.hList}
               keyExtractor={i => String(i.id)}
               renderItem={renderFeedPost}
-              initialNumToRender={3}
-              maxToRenderPerBatch={3}
-              windowSize={3}
-            />
-          </>
-        )}
-
-        {/* Fresh Artworks from API */}
-        {freshProducts.length > 0 && (
-          <>
-            <SectionHeader title="Fresh Artworks" subtitle="Newly listed originals" onSeeAll={() => router.push('/(tabs)/browse')} />
-            <FlatList
-              data={freshProducts}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.hList}
-              keyExtractor={i => i.id}
-              renderItem={({ item }) => (
-                <View style={{ width: 160 }}>
-                  <ProductCard product={item} />
-                </View>
-              )}
               initialNumToRender={3}
               maxToRenderPerBatch={3}
               windowSize={3}

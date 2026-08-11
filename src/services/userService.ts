@@ -274,4 +274,39 @@ export const UserService = {
     });
     return res.data;
   },
+
+  /**
+   * Get user saved favorites
+   */
+  async getFavorites(): Promise<any[]> {
+    const res = await fetchApi<ApiResponse<any[]> | any[]>('/users/favorites', {
+      requiresAuth: true,
+    });
+    if (Array.isArray(res)) return res;
+    return res.data || [];
+  },
+
+  /**
+   * Toggle favorite status of artwork product
+   */
+  async toggleFavorite(productId: string | number): Promise<boolean> {
+    const res = await fetchApi<any>(`/products/${productId}/favorite`, {
+      method: 'POST',
+      requiresAuth: true,
+    });
+    return res.isFavorite ?? res.data?.isFavorite ?? true;
+  },
+
+  /**
+   * Get user written reviews
+   */
+  async getMyReviews(): Promise<any[]> {
+    const res = await fetchApi<ApiResponse<any[]> | any[]>('/users/me/reviews', {
+      requiresAuth: true,
+    });
+    if (Array.isArray(res)) return res;
+    return res.data || [];
+  },
 };
+
+export const userService = UserService;

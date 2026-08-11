@@ -504,7 +504,7 @@ export default function Cart() {
               <Text style={styles.bottomLabel}>{discount > 0 ? `Total (saved ₹${discount.toLocaleString('en-IN')})` : 'Total'}</Text>
               <Text style={styles.bottomPrice}>₹{grandTotal.toLocaleString('en-IN')}</Text>
             </View>
-            <GoldButton label="Proceed to Checkout" onPress={() => setStep('checkout')} size="lg" />
+            <GoldButton label="Proceed to Checkout" onPress={() => router.push('/checkout' as any)} size="lg" />
           </View>
         </>
       )}
