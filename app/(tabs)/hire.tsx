@@ -1,28 +1,39 @@
-import { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { PerformerCard } from '@/components/artist/PerformerCard';
 import { PERFORMER_TYPES } from '@/constants/data';
-import { useAppData } from '@/context/AppContext';
 import { Performer } from '@/types';
+import { ArtistServiceApi } from '@/services/artistService';
 
 export default function Hire() {
-  const { performers } = useAppData();
-  const [active, setActive] = useState('All');
+  const [services, setServices] = useState<Array<Performer & { serviceId: string }>>([]);
+  const [loading, setLoading]   = useState(true);
+  const [active, setActive]     = useState('All');
 
-  const filtered = useMemo(() => {
-    if (active === 'All') return performers;
-    return performers.filter(p => p.type.toLowerCase().includes(active.toLowerCase()) || active.toLowerCase().includes(p.type.toLowerCase()));
-  }, [performers, active]);
-
-  const handlePerformerPress = useCallback((id: number) => {
-    router.push(`/booking/${id}` as any);
+  useEffect(() => {
+    ArtistServiceApi.getServices({ limit: 50 })
+      .then(data => setServices(data))
+      .catch(() => setServices([]))
+      .finally(() => setLoading(false));
   }, []);
 
-  const renderPerformerItem = useCallback(({ item }: { item: Performer }) => (
-    <PerformerCard item={item} onPress={() => handlePerformerPress(item.id)} />
+  const filtered = useMemo(() => {
+    if (active === 'All') return services;
+    return services.filter(p =>
+      p.type.toLowerCase().includes(active.toLowerCase()) ||
+      active.toLowerCase().includes(p.type.toLowerCase())
+    );
+  }, [services, active]);
+
+  const handlePerformerPress = useCallback((serviceId: string) => {
+    router.push(`/booking/${serviceId}` as any);
+  }, []);
+
+  const renderPerformerItem = useCallback(({ item }: { item: Performer & { serviceId: string } }) => (
+    <PerformerCard item={item} onPress={() => handlePerformerPress(item.serviceId)} />
   ), [handlePerformerPress]);
 
   const renderTypeItem = useCallback(({ item }: { item: typeof PERFORMER_TYPES[0] | { key: string; label: string; emoji: string } }) => (
@@ -46,7 +57,6 @@ export default function Hire() {
           <Text style={styles.sub}>For weddings, events & celebrations</Text>
         </View>
 
-        {/* Performer type grid */}
         <FlatList
           data={[{ key: 'All', label: 'All', emoji: '✦' }, ...PERFORMER_TYPES]}
           horizontal showsHorizontalScrollIndicator={false}
@@ -57,19 +67,32 @@ export default function Hire() {
         />
       </SafeAreaView>
 
-      <FlatList
-        data={filtered}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.grid}
-        showsVerticalScrollIndicator={false}
-        keyExtractor={i => String(i.id)}
-        renderItem={renderPerformerItem}
-        initialNumToRender={6}
-        maxToRenderPerBatch={6}
-        windowSize={4}
-        removeClippedSubviews={true}
-      />
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator color={Colors.gold} size="large" />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={styles.grid}
+          showsVerticalScrollIndicator={false}
+          keyExtractor={i => i.serviceId}
+          renderItem={renderPerformerItem}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={4}
+          removeClippedSubviews={true}
+          ListEmptyComponent={
+            <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
+              <Text style={{ ...Typography.body, fontSize: 14, color: Colors.creamDim }}>
+                No performers found
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }

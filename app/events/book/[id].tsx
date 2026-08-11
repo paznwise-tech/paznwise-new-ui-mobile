@@ -1,311 +1,271 @@
-import React, { useEffect, useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
-import { eventService } from '@/services/eventService';
-import type { Event } from '@/types';
+import { EventService, ApiEventDetail, ApiTicketTier, formatEventDate } from '@/services/eventService';
 
-export default function BookEventScreen() {
-  const { id, seats } = useLocalSearchParams<{ id: string; seats?: string }>();
+export default function BookEventTicket() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [event, setEvent] = useState<ApiEventDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [booking, setBooking] = useState(false);
-  const [event, setEvent] = useState<Event | any>(null);
-
-  const numSeats = parseInt(seats || '1', 10);
-
-  // Attendee info form
-  const [attendeeName, setAttendeeName] = useState('');
-  const [attendeeEmail, setAttendeeEmail] = useState('');
-  const [attendeePhone, setAttendeePhone] = useState('');
+  const [selectedTier, setSelectedTier] = useState<ApiTicketTier | null>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchEvent();
+    if (!id) return;
+    EventService.getEventById(id)
+      .then(e => {
+        if (e) {
+          setEvent(e);
+          if (e.ticketTiers?.length) setSelectedTier(e.ticketTiers[0]);
+        }
+      })
+      .catch(err => console.warn('[BookEvent]', err))
+      .finally(() => setLoading(false));
   }, [id]);
 
-  const fetchEvent = async () => {
-    if (!id) return;
-    try {
-      const data = await eventService.getEventById(id);
-      setEvent(data);
-    } catch (err: any) {
-      console.warn('[BookEvent] Error fetching event:', err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const total = useMemo(() => {
+    if (!selectedTier) return 0;
+    return selectedTier.price * quantity;
+  }, [selectedTier, quantity]);
 
-  const handleConfirmBooking = async () => {
-    if (!attendeeName.trim() || !attendeeEmail.trim() || !attendeePhone.trim()) {
-      Alert.alert('Required Info', 'Please fill in attendee name, email, and phone number.');
+  const handleConfirm = useCallback(async () => {
+    if (!event || submitting) return;
+    if (!selectedTier && !event.isFree) {
+      alert('Please select a ticket type');
       return;
     }
-
-    setBooking(true);
+    setSubmitting(true);
     try {
-      const res = await eventService.bookEvent({
-        eventId: id || '',
-        seatsBooked: numSeats,
-      });
-
-      const bookingId = res.bookingId || res.id || res.data?.id || 'temp';
-      if (bookingId && bookingId !== 'temp') {
-        await eventService.confirmBooking(bookingId);
-      }
-
-      Alert.alert('Tickets Confirmed! 🎟️', 'Your event tickets have been booked successfully.', [
-        {
-          text: 'View My Tickets',
-          onPress: () => router.replace('/profile/event-bookings' as any),
-        },
-      ]);
-    } catch (err: any) {
-      console.error('[BookEvent] Booking error:', err);
-      Alert.alert('Booking Error', err.message || 'Failed to complete ticket reservation.');
+      const tierId = selectedTier?.id ?? 'default';
+      await EventService.bookEvent(String(id), tierId, quantity);
+      alert('Registration successful! Check My Tickets for your ticket.');
+      router.push('/event-bookings' as any);
+    } catch (e: any) {
+      alert(e.message ?? 'Booking failed. Please try again.');
     } finally {
-      setBooking(false);
+      setSubmitting(false);
     }
-  };
+  }, [event, selectedTier, quantity, id, submitting]);
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.gold} />
-        <Text style={styles.loadingText}>Preparing Booking...</Text>
-      </SafeAreaView>
+      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={Colors.gold} size="large" />
+      </View>
     );
   }
 
-  const eventPrice = typeof event?.price === 'number' ? event.price : parseFloat(event?.price || '0');
-  const totalPrice = eventPrice * numSeats;
+  if (!event) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
+        <Text style={{ color: Colors.creamDim }}>Event not found.</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: Spacing.md }}>
+          <Text style={{ color: Colors.gold }}>← Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const tiers = event.ticketTiers ?? [];
 
   return (
-    <SafeAreaView edges={['top']} style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Confirm Event Ticket</Text>
-        <View style={{ width: 36 }} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 140 }}>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Event Summary Card */}
-        <LinearGradient colors={['#1C2F45', '#152236']} style={styles.summaryCard}>
-          <Text style={styles.eventTitle}>{event?.title}</Text>
-          <Text style={styles.eventSub}>📅 {event?.date} • 📍 {event?.city || event?.location || 'Venue'}</Text>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Pass Quantity</Text>
-            <Text style={styles.rowVal}>{numSeats} Ticket{numSeats > 1 ? 's' : ''}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>Price per Ticket</Text>
-            <Text style={styles.rowVal}>{eventPrice === 0 ? 'Free' : `₹${eventPrice.toLocaleString('en-IN')}`}</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.row}>
-            <Text style={styles.totalKey}>Grand Total</Text>
-            <Text style={styles.totalVal}>{totalPrice === 0 ? 'FREE' : `₹${totalPrice.toLocaleString('en-IN')}`}</Text>
-          </View>
-        </LinearGradient>
-
-        {/* Attendee Details Form */}
-        <View style={styles.formCard}>
-          <Text style={styles.formTitle}>Primary Attendee Info</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Full Name"
-            placeholderTextColor={Colors.creamDim}
-            value={attendeeName}
-            onChangeText={setAttendeeName}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Email Address"
-            placeholderTextColor={Colors.creamDim}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={attendeeEmail}
-            onChangeText={setAttendeeEmail}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Mobile Phone Number"
-            placeholderTextColor={Colors.creamDim}
-            keyboardType="phone-pad"
-            value={attendeePhone}
-            onChangeText={setAttendeePhone}
-          />
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Get Tickets</Text>
+          <View style={{ width: 24 }} />
         </View>
 
-        <Text style={styles.noteText}>
-          🔒 Your ticket confirmation QR code will be delivered instantly to your registered email and stored under My Tickets.
-        </Text>
+        <View style={styles.content}>
+          {/* Event summary */}
+          <View style={styles.eventSummary}>
+            <Text style={styles.eventTitle}>{event.title}</Text>
+            {event.eventDate && (
+              <Text style={styles.eventDate}>
+                📅 {formatEventDate(event.eventDate, event.eventEndDate)}
+              </Text>
+            )}
+            {event.venueName && (
+              <Text style={styles.eventDate}>🏛️ {event.venueName}</Text>
+            )}
+          </View>
+
+          {/* Tier selection */}
+          {tiers.length > 0 ? (
+            <>
+              <Text style={styles.sectionTitle}>Select Ticket Type</Text>
+              {tiers.map(tier => {
+                const isSelected = selectedTier?.id === tier.id;
+                return (
+                  <TouchableOpacity
+                    key={tier.id}
+                    style={[styles.tierCard, isSelected && styles.tierCardActive]}
+                    onPress={() => setSelectedTier(tier)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
+                      {isSelected && <View style={styles.radioInner} />}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.tierName}>{tier.name}</Text>
+                      {tier.description ? <Text style={styles.tierDesc}>{tier.description}</Text> : null}
+                      {tier.available !== undefined && tier.available <= 10 && (
+                        <Text style={styles.tierAvail}>Only {tier.available} left!</Text>
+                      )}
+                    </View>
+                    <Text style={styles.tierPrice}>
+                      {tier.price === 0 ? 'Free' : `₹${tier.price.toLocaleString('en-IN')}`}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </>
+          ) : (
+            <View style={styles.freeNotice}>
+              <Text style={styles.freeNoticeText}>🎟️ This is a free event</Text>
+              <Text style={[styles.freeNoticeText, { fontSize: 13, fontFamily: 'Inter_400Regular', marginTop: 4 }]}>
+                Register to confirm your spot
+              </Text>
+            </View>
+          )}
+
+          {/* Quantity */}
+          <Text style={styles.sectionTitle}>Number of Tickets</Text>
+          <View style={styles.qtyRow}>
+            <TouchableOpacity style={styles.qtyBtn} onPress={() => setQuantity(q => Math.max(1, q - 1))}>
+              <Text style={styles.qtyBtnText}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.qtyVal}>{quantity}</Text>
+            <TouchableOpacity
+              style={[styles.qtyBtn, styles.qtyBtnPlus]}
+              onPress={() => setQuantity(q => Math.min(10, q + 1))}
+            >
+              <Text style={[styles.qtyBtnText, { color: Colors.bg }]}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Summary */}
+          {(selectedTier || event.isFree) && (
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>Order Summary</Text>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryKey}>
+                  {selectedTier?.name ?? 'General Admission'} × {quantity}
+                </Text>
+                <Text style={styles.summaryVal}>
+                  {total === 0 ? 'Free' : `₹${total.toLocaleString('en-IN')}`}
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryTotalKey}>Total</Text>
+                <Text style={styles.summaryTotal}>
+                  {total === 0 ? 'Free' : `₹${total.toLocaleString('en-IN')}`}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
       </ScrollView>
 
-      {/* Bottom Bar */}
-      <View style={styles.bottomBar}>
+      <View style={styles.cta}>
         <GoldButton
-          label={booking ? 'Processing...' : 'Confirm Ticket Reservation'}
-          onPress={handleConfirmBooking}
-          disabled={booking}
+          label={
+            submitting
+              ? 'Processing…'
+              : event.isFree
+              ? `Register · ${quantity} ${quantity === 1 ? 'ticket' : 'tickets'}`
+              : `Pay ₹${total.toLocaleString('en-IN')}`
+          }
+          onPress={handleConfirm}
           size="lg"
+          fullWidth
+          disabled={submitting}
         />
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  centerContainer: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    ...Typography.bodySemibold,
-    color: Colors.cream,
-    marginTop: Spacing.md,
-  },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    padding: Spacing.md, paddingTop: 52,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
+  backIcon: { color: Colors.gold, fontSize: 22 },
+  headerTitle: { ...Typography.heading, fontSize: 20 },
+  content: { padding: Spacing.md, gap: Spacing.md },
+  eventSummary: {
+    backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.borderGold, padding: Spacing.md, gap: 4,
   },
-  backBtnText: {
-    fontSize: 20,
-    color: Colors.cream,
+  eventTitle: { ...Typography.heading, fontSize: 18 },
+  eventDate: { ...Typography.caption, fontSize: 13 },
+  sectionTitle: { ...Typography.heading, fontSize: 20, marginTop: Spacing.sm },
+  tierCard: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.md,
+    borderWidth: 1.5, borderColor: Colors.border, padding: Spacing.md,
   },
-  headerTitle: {
-    ...Typography.display,
-    fontSize: 18,
-    color: Colors.cream,
+  tierCardActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '11' },
+  radioOuter: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 2, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
   },
-  scrollContent: {
-    padding: Spacing.md,
-    paddingBottom: 100,
+  radioOuterActive: { borderColor: Colors.gold },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.gold },
+  tierName: { ...Typography.bodySemibold, fontSize: 15 },
+  tierDesc: { ...Typography.caption, fontSize: 12, marginTop: 2 },
+  tierAvail: { ...Typography.label, fontSize: 9, color: Colors.warning, marginTop: 4 },
+  tierPrice: { ...Typography.display, fontSize: 18, color: Colors.gold },
+  freeNotice: {
+    backgroundColor: Colors.success + '22', borderWidth: 1, borderColor: Colors.success,
+    borderRadius: Radius.md, padding: Spacing.md, alignItems: 'center',
+  },
+  freeNoticeText: { ...Typography.bodySemibold, fontSize: 16, color: Colors.success },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
+  qtyBtn: {
+    width: 44, height: 44, borderRadius: 22,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qtyBtnPlus: { backgroundColor: Colors.gold, borderColor: Colors.gold },
+  qtyBtnText: { ...Typography.bodyBold, fontSize: 22, color: Colors.cream },
+  qtyVal: {
+    ...Typography.display, fontSize: 28, color: Colors.gold,
+    minWidth: 40, textAlign: 'center',
   },
   summaryCard: {
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.gold + '44',
-    marginBottom: Spacing.md,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.borderGold, overflow: 'hidden',
   },
-  eventTitle: {
-    ...Typography.display,
-    fontSize: 18,
-    color: Colors.cream,
-    marginBottom: 2,
+  summaryTitle: {
+    ...Typography.heading, fontSize: 18, padding: Spacing.md,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  eventSub: {
-    ...Typography.caption,
-    fontSize: 12,
-    color: Colors.creamDim,
+  summaryRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
   },
-  divider: {
-    height: 1,
-    backgroundColor: Colors.border,
-    marginVertical: Spacing.xs,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 2,
-  },
-  rowLabel: {
-    ...Typography.body,
-    fontSize: 13,
-    color: Colors.creamDim,
-  },
-  rowVal: {
-    ...Typography.bodySemibold,
-    fontSize: 13,
-    color: Colors.cream,
-  },
-  totalKey: {
-    ...Typography.bodyBold,
-    fontSize: 15,
-    color: Colors.cream,
-  },
-  totalVal: {
-    ...Typography.display,
-    fontSize: 18,
-    color: Colors.gold,
-  },
-  formCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    gap: Spacing.xs,
-    marginBottom: Spacing.md,
-  },
-  formTitle: {
-    ...Typography.bodyBold,
-    fontSize: 14,
-    color: Colors.cream,
-    marginBottom: 4,
-  },
-  input: {
-    backgroundColor: Colors.bgInput,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 10,
-    ...Typography.body,
-    fontSize: 14,
-    color: Colors.cream,
-  },
-  noteText: {
-    ...Typography.caption,
-    fontSize: 12,
-    color: Colors.creamDim,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: Colors.bgCard,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-    padding: Spacing.md,
+  summaryKey: { ...Typography.caption, fontSize: 13 },
+  summaryVal: { ...Typography.bodySemibold, fontSize: 13 },
+  summaryDivider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.md, marginVertical: 4 },
+  summaryTotalKey: { ...Typography.bodyBold, fontSize: 15 },
+  summaryTotal: { ...Typography.display, fontSize: 20, color: Colors.gold },
+  cta: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: Colors.bgElevated, borderTopWidth: 1, borderTopColor: Colors.borderGold,
+    padding: Spacing.md, paddingBottom: 28,
   },
 });

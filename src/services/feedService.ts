@@ -232,6 +232,7 @@ export interface PickedImage {
 
 export interface CreatePostData {
   images: PickedImage[];
+  video?: PickedImage;
   title?: string;
   description?: string;
   categoryId?: string;
@@ -335,6 +336,9 @@ export const FeedService = {
     data.images.forEach(img => {
       formData.append('images', { uri: img.uri, name: img.name, type: img.type } as any);
     });
+    if (data.video) {
+      formData.append('video', { uri: data.video.uri, name: data.video.name, type: data.video.type } as any);
+    }
     if (data.title)       formData.append('title', data.title);
     if (data.description) formData.append('description', data.description);
     if (data.categoryId)  formData.append('categoryId', data.categoryId);

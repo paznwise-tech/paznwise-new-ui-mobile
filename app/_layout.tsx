@@ -43,7 +43,7 @@ export default function RootLayout() {
     let timer: any;
     
     AuthStorage.getAccessToken().then(async token => {
-      // Hide the initial static native splash
+      console.log('🔑 ACCESS TOKEN:', token);
       await SplashScreen.hideAsync();
       
       // Let our premium Lottie splash animation play for 3 seconds before transitioning
@@ -84,10 +84,37 @@ export default function RootLayout() {
           <Stack.Screen name="booking/[id]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="booking/my-bookings" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="messages/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="messages/[conversationId]" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="network/suggestions" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="network/follows" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="profile/edit" options={{ animation: 'slide_from_bottom' }} />
           <Stack.Screen name="profile/[id]" options={{ animation: 'slide_from_right' }} />
+          {/* Events flow */}
+          <Stack.Screen name="events/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="events/book/[id]" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="event-bookings/index" options={{ animation: 'slide_from_right' }} />
+          {/* Discovery */}
+          <Stack.Screen name="search/index" options={{ animation: 'fade' }} />
+          <Stack.Screen name="discover/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="product/category/[slug]" options={{ animation: 'slide_from_right' }} />
+          {/* Account */}
+          <Stack.Screen name="notifications/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="orders/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="favorites/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="settings/index" options={{ animation: 'slide_from_right' }} />
+          {/* Content */}
+          <Stack.Screen name="reviews/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="coupons/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="help/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="contact/index" options={{ animation: 'slide_from_right' }} />
+          {/* Artist */}
+          <Stack.Screen name="artist/dashboard/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="artist/availability/index" options={{ animation: 'slide_from_right' }} />
+          {/* Seller */}
+          <Stack.Screen name="seller/dashboard/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="seller/setup/index" options={{ animation: 'slide_from_right' }} />
+          {/* Rentals */}
+          <Stack.Screen name="rentals/index" options={{ animation: 'slide_from_right' }} />
         </Stack>
 
         {showSplash && (

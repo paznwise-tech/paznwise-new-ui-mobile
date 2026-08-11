@@ -1,6 +1,6 @@
 // Home — Discovery feed with hero slider, categories, artworks, performers, events
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Share } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -10,11 +10,11 @@ import ProductCard from '@/components/product/ProductCard';
 import { PerformerCard } from '@/components/artist/PerformerCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { HERO_SLIDES, CATEGORIES } from '@/constants/data';
-import { useAppData, useCart, useUser, useFeed } from '@/context/AppContext';
+import { useCart, useUser, useFeed } from '@/context/AppContext';
 import { Performer } from '@/types';
 import { FeedPost } from '@/services/feedService';
 import { useMarketplaceProducts } from '@/hooks/useProducts';
-import { BrandLogo } from '@/components/ui/BrandLogo';
+import { ArtistServiceApi } from '@/services/artistService';
 const { width } = Dimensions.get('window');
 
 function HeroSlider() {
@@ -89,7 +89,8 @@ function CategoryBar() {
 }
 
 export default function Home() {
-  const { performers } = useAppData();
+  const [performers, setPerformers] = useState<Array<Performer & { serviceId: string }>>([]);
+  const [performersLoading, setPerformersLoading] = useState(true);
   const { cart } = useCart();
   const { user } = useUser();
   const { feedPosts, trendingPosts, feedLoading, feedError, fetchPersonalisedFeed, fetchTrendingFeed, togglePostLike, likePost } = useFeed();
@@ -118,18 +119,35 @@ export default function Home() {
     fetchTrendingFeed();
   }, [fetchTrendingFeed]);
 
+  // Fetch bookable performers (artist-services) for the "Live Performers" section
+  useEffect(() => {
+    ArtistServiceApi.getServices({ limit: 10 })
+      .then(setPerformers)
+      .catch(() => setPerformers([]))
+      .finally(() => setPerformersLoading(false));
+  }, []);
+
   useEffect(() => {
     if (user.isLoggedIn && user.id) {
       fetchPersonalisedFeed(user.id);
     }
   }, [user.isLoggedIn, user.id, fetchPersonalisedFeed]);
 
-  const handlePerformerPress = useCallback((id: number) => {
-    router.push(`/booking/${id}` as any);
+  const handleSharePost = useCallback(async (item: FeedPost) => {
+    try {
+      await Share.share({
+        title: item.title || 'Check out this post on Paznwise!',
+        message: [item.title, item.description].filter(Boolean).join('\n\n') || 'Check out this post on Paznwise!',
+      });
+    } catch {}
   }, []);
 
-  const renderPerformerItem = useCallback(({ item }: { item: Performer }) => (
-    <PerformerCard item={item} onPress={() => handlePerformerPress(item.id)} />
+  const handlePerformerPress = useCallback((serviceId: string) => {
+    router.push(`/booking/${serviceId}` as any);
+  }, []);
+
+  const renderPerformerItem = useCallback(({ item }: { item: Performer & { serviceId: string } }) => (
+    <PerformerCard item={item} onPress={() => handlePerformerPress(item.serviceId)} />
   ), [handlePerformerPress]);
 
   // Render a feed post card
@@ -167,6 +185,12 @@ export default function Home() {
                 <Text style={[styles.feedLikeBadgeText, item.isLiked && { color: '#ff6b6b' }]}>
                   {item.isLiked ? '♥' : '♡'} {item.likesCount ?? 0}
                 </Text>
+              </TouchableOpacity>
+            </View>
+            {/* Share badge */}
+            <View style={styles.feedShareBadge}>
+              <TouchableOpacity onPress={() => handleSharePost(item)}>
+                <Text style={styles.feedShareBadgeText}>↗</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -210,7 +234,7 @@ export default function Home() {
         </TouchableOpacity>
       </View>
     );
-  }, [togglePostLike, handleImagePress]);
+  }, [togglePostLike, handleImagePress, handleSharePost]);
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <SafeAreaView edges={['top']} style={styles.safeTop}>
@@ -317,18 +341,27 @@ export default function Home() {
 
         {/* Performers */}
         <SectionHeader title="Live Performers" subtitle="For events & weddings" onSeeAll={() => router.push('/(tabs)/hire')} />
-        <FlatList
-          data={performers}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.hList}
-          keyExtractor={i => String(i.id)}
-          renderItem={renderPerformerItem}
-          initialNumToRender={3}
-          maxToRenderPerBatch={3}
-          windowSize={3}
-          removeClippedSubviews={true}
-        />
+        {performersLoading ? (
+          <ActivityIndicator color={Colors.gold} style={{ marginVertical: Spacing.lg }} />
+        ) : (
+          <FlatList
+            data={performers}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.hList}
+            keyExtractor={i => i.serviceId}
+            renderItem={renderPerformerItem}
+            initialNumToRender={3}
+            maxToRenderPerBatch={3}
+            windowSize={3}
+            removeClippedSubviews={true}
+            ListEmptyComponent={
+              <Text style={{ ...Typography.body, fontSize: 13, color: Colors.creamDim, paddingHorizontal: Spacing.md }}>
+                No performers available yet
+              </Text>
+            }
+          />
+        )}
 
         {/* Sell / Register CTA */}
         <View style={styles.ctaSection}>
@@ -402,6 +435,8 @@ const styles = StyleSheet.create({
   feedImagePlaceholderIcon: { fontSize: 32 },
   feedLikeBadge: { position: 'absolute', bottom: Spacing.xs, right: Spacing.xs, backgroundColor: 'rgba(13,27,42,0.75)', borderRadius: Radius.full, paddingHorizontal: Spacing.sm, paddingVertical: 3 },
   feedLikeBadgeText: { ...Typography.caption, fontSize: 11, color: Colors.cream },
+  feedShareBadge: { position: 'absolute', bottom: Spacing.xs, left: Spacing.xs, backgroundColor: 'rgba(13,27,42,0.75)', borderRadius: Radius.full, paddingHorizontal: Spacing.sm, paddingVertical: 3 },
+  feedShareBadgeText: { ...Typography.caption, fontSize: 11, color: Colors.cream },
   feedContent: { padding: Spacing.sm, gap: Spacing.xs },
   feedUserRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   feedAvatar: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: Colors.borderGold },

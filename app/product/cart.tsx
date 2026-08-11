@@ -10,6 +10,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { useCart } from '@/context/AppContext';
+import { OrderService } from '@/services/orderService';
+import { CouponService, AppliedCoupon } from '@/services/couponService';
 import type { CartItem } from '@/types';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -83,11 +85,12 @@ interface CheckoutScreenProps {
   subtotal: number;
   grandTotal: number;
   itemCount: number;
+  submitting: boolean;
   onBack: () => void;
   onPlaceOrder: () => void;
 }
 
-function CheckoutScreen({ addr, setAddr, subtotal, grandTotal, itemCount, onBack, onPlaceOrder }: CheckoutScreenProps) {
+function CheckoutScreen({ addr, setAddr, subtotal, grandTotal, itemCount, submitting, onBack, onPlaceOrder }: CheckoutScreenProps) {
   const u = (k: keyof DeliveryAddress) => (v: string) => setAddr(a => ({ ...a, [k]: v }));
 
   return (
@@ -161,7 +164,7 @@ function CheckoutScreen({ addr, setAddr, subtotal, grandTotal, itemCount, onBack
           <Text style={styles.bottomLabel}>Pay on Delivery</Text>
           <Text style={styles.bottomPrice}>₹{grandTotal.toLocaleString('en-IN')}</Text>
         </View>
-        <GoldButton label="Place Order" onPress={onPlaceOrder} size="lg" />
+        <GoldButton label={submitting ? 'Placing Order…' : 'Place Order'} onPress={onPlaceOrder} size="lg" />
       </View>
     </KeyboardAvoidingView>
   );
@@ -240,9 +243,17 @@ function ConfirmedScreen({ order }: ConfirmedScreenProps) {
 
         {/* CTAs */}
         <View style={{ gap: Spacing.sm, marginTop: Spacing.xl }}>
-          <GoldButton label="Continue Shopping" onPress={() => router.replace('/(tabs)/browse' as any)} fullWidth size="lg" />
-          <TouchableOpacity style={styles.homeBtn} onPress={() => router.replace('/(tabs)' as any)}>
-            <Text style={styles.homeBtnText}>Go to Home</Text>
+          <GoldButton
+            label="Track My Order"
+            onPress={() => router.push({
+              pathname: '/order-tracking',
+              params: { orderId: order.id, estimatedDelivery: formatDeliveryDate(order.estimatedDelivery) },
+            } as any)}
+            fullWidth
+            size="lg"
+          />
+          <TouchableOpacity style={styles.homeBtn} onPress={() => router.replace('/(tabs)/browse' as any)}>
+            <Text style={styles.homeBtnText}>Continue Shopping</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -258,12 +269,19 @@ export default function Cart() {
   const [step, setStep] = useState<CheckoutStep>('cart');
   const [addr, setAddr] = useState<DeliveryAddress>({ name: '', phone: '', line1: '', city: '', pincode: '' });
   const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   const subtotal = cartTotal;
-  const grandTotal = subtotal + PLATFORM_FEE;
+  const discount = appliedCoupon?.discountAmount ?? 0;
+  const grandTotal = subtotal + PLATFORM_FEE - discount;
   const isEmpty = cart.length === 0;
 
-  const handlePlaceOrder = useCallback(() => {
+  const handlePlaceOrder = useCallback(async () => {
     if (!addr.name.trim() || !addr.phone.trim() || !addr.line1.trim() || !addr.city.trim() || !addr.pincode.trim()) {
       alert('Please fill in all delivery details.');
       return;
@@ -276,25 +294,67 @@ export default function Cart() {
       alert('Please enter a valid 6-digit pincode.');
       return;
     }
+    if (submitting) return;
 
-    const orderId = `ORD-${Math.floor(10000000 + Math.random() * 90000000)}`;
-    const daysOut = Math.floor(5 + Math.random() * 6); // 5–10 days
-    const deliveryDate = new Date();
-    deliveryDate.setDate(deliveryDate.getDate() + daysOut);
+    setSubmitting(true);
+    const fallbackDelivery = new Date();
+    fallbackDelivery.setDate(fallbackDelivery.getDate() + 7);
 
-    setPlacedOrder({
-      id: orderId,
-      items: [...cart],
-      subtotal,
-      platformFee: PLATFORM_FEE,
-      total: grandTotal,
-      estimatedDelivery: deliveryDate,
-      address: { ...addr },
-    });
+    try {
+      const order = await OrderService.createOrder(cart, addr, PLATFORM_FEE);
+      const estimatedDelivery = order.estimatedDelivery
+        ? new Date(order.estimatedDelivery)
+        : fallbackDelivery;
 
-    clearCart();
-    setStep('confirmed');
-  }, [addr, cart, subtotal, grandTotal, clearCart]);
+      setPlacedOrder({
+        id: order.id,
+        items: [...cart],
+        subtotal,
+        platformFee: PLATFORM_FEE,
+        total: grandTotal,
+        estimatedDelivery,
+        address: { ...addr },
+      });
+    } catch {
+      // Fall back to a local order ID if the API is unavailable
+      setPlacedOrder({
+        id: `ORD-${Math.floor(10000000 + Math.random() * 90000000)}`,
+        items: [...cart],
+        subtotal,
+        platformFee: PLATFORM_FEE,
+        total: grandTotal,
+        estimatedDelivery: fallbackDelivery,
+        address: { ...addr },
+      });
+    } finally {
+      setSubmitting(false);
+      clearCart();
+      setStep('confirmed');
+    }
+  }, [addr, cart, subtotal, grandTotal, clearCart, submitting]);
+
+  const handleApplyCoupon = useCallback(async () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      const result = await CouponService.validateCoupon(code, subtotal);
+      setAppliedCoupon(result);
+      setCouponError(null);
+    } catch (e: any) {
+      setCouponError(e.message ?? 'Invalid coupon');
+      setAppliedCoupon(null);
+    } finally {
+      setCouponLoading(false);
+    }
+  }, [couponCode, subtotal]);
+
+  const handleRemoveCoupon = useCallback(() => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setCouponError(null);
+  }, []);
 
   if (step === 'confirmed' && placedOrder) {
     return <ConfirmedScreen order={placedOrder} />;
@@ -308,6 +368,7 @@ export default function Cart() {
         subtotal={subtotal}
         grandTotal={grandTotal}
         itemCount={cart.length}
+        submitting={submitting}
         onBack={() => setStep('cart')}
         onPlaceOrder={handlePlaceOrder}
       />
@@ -359,15 +420,64 @@ export default function Cart() {
               ))}
             </View>
 
+            {/* Coupon input */}
+            <View style={styles.couponWrap}>
+              {appliedCoupon ? (
+                <View style={styles.couponApplied}>
+                  <View style={styles.couponAppliedLeft}>
+                    <Text style={styles.couponAppliedIcon}>🎟️</Text>
+                    <View>
+                      <Text style={styles.couponAppliedCode}>{appliedCoupon.code}</Text>
+                      <Text style={styles.couponAppliedSaving}>
+                        You save ₹{appliedCoupon.discountAmount.toLocaleString('en-IN')}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={handleRemoveCoupon}>
+                    <Text style={styles.couponRemove}>✕ Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.couponRow}>
+                    <TextInput
+                      style={styles.couponInput}
+                      placeholder="Enter coupon code"
+                      placeholderTextColor={Colors.creamFaint}
+                      autoCapitalize="characters"
+                      value={couponCode}
+                      onChangeText={v => { setCouponCode(v); setCouponError(null); }}
+                      onSubmitEditing={handleApplyCoupon}
+                    />
+                    <TouchableOpacity
+                      style={[styles.couponBtn, (!couponCode.trim() || couponLoading) && styles.couponBtnDisabled]}
+                      onPress={handleApplyCoupon}
+                      disabled={!couponCode.trim() || couponLoading}
+                    >
+                      <Text style={styles.couponBtnText}>{couponLoading ? '…' : 'Apply'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {couponError ? (
+                    <Text style={styles.couponError}>{couponError}</Text>
+                  ) : null}
+                </>
+              )}
+            </View>
+
             {/* Order summary */}
             <View style={styles.summaryWrap}>
               <LinearGradient colors={['#1C2F45', '#152236']} style={styles.summaryCard}>
                 <View style={styles.summaryGoldLine} />
                 <Text style={styles.summaryTitle}>Order Summary</Text>
-                {[['Subtotal', `₹${subtotal.toLocaleString('en-IN')}`], ['Shipping', 'Free'], ['Platform fee', `₹${PLATFORM_FEE}`]].map(([k, v]) => (
+                {[
+                  ['Subtotal', `₹${subtotal.toLocaleString('en-IN')}`],
+                  ['Shipping', 'Free'],
+                  ['Platform fee', `₹${PLATFORM_FEE}`],
+                  ...(discount > 0 ? [['Coupon discount', `-₹${discount.toLocaleString('en-IN')}`]] : []),
+                ].map(([k, v]) => (
                   <View key={k} style={styles.summaryRow}>
-                    <Text style={styles.summaryKey}>{k}</Text>
-                    <Text style={styles.summaryVal}>{v}</Text>
+                    <Text style={[styles.summaryKey, k === 'Coupon discount' && { color: Colors.success }]}>{k}</Text>
+                    <Text style={[styles.summaryVal, k === 'Coupon discount' && { color: Colors.success }]}>{v}</Text>
                   </View>
                 ))}
                 <View style={styles.summaryDivider} />
@@ -391,7 +501,7 @@ export default function Cart() {
 
           <View style={styles.bottomBar}>
             <View style={styles.bottomTotal}>
-              <Text style={styles.bottomLabel}>Total</Text>
+              <Text style={styles.bottomLabel}>{discount > 0 ? `Total (saved ₹${discount.toLocaleString('en-IN')})` : 'Total'}</Text>
               <Text style={styles.bottomPrice}>₹{grandTotal.toLocaleString('en-IN')}</Text>
             </View>
             <GoldButton label="Proceed to Checkout" onPress={() => router.push('/checkout' as any)} size="lg" />
@@ -511,4 +621,30 @@ const styles = StyleSheet.create({
   // Home button
   homeBtn: { alignItems: 'center', paddingVertical: Spacing.sm },
   homeBtnText: { ...Typography.caption, fontSize: 14, color: Colors.gold },
+
+  // Coupon
+  couponWrap: { marginHorizontal: Spacing.md, marginBottom: Spacing.md },
+  couponRow: { flexDirection: 'row', gap: Spacing.sm },
+  couponInput: {
+    flex: 1, backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    ...Typography.body, fontSize: 14, color: Colors.cream, letterSpacing: 1,
+  },
+  couponBtn: {
+    backgroundColor: Colors.gold, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, justifyContent: 'center',
+  },
+  couponBtnDisabled: { backgroundColor: Colors.border },
+  couponBtnText: { ...Typography.bodyBold, fontSize: 13, color: Colors.bg },
+  couponError: { ...Typography.caption, fontSize: 12, color: Colors.error, marginTop: 4 },
+  couponApplied: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.success + '11', borderWidth: 1, borderColor: Colors.success + '44',
+    borderRadius: Radius.md, padding: Spacing.md,
+  },
+  couponAppliedLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  couponAppliedIcon: { fontSize: 22 },
+  couponAppliedCode: { ...Typography.bodyBold, fontSize: 14, color: Colors.success, letterSpacing: 1 },
+  couponAppliedSaving: { ...Typography.caption, fontSize: 12, color: Colors.success },
+  couponRemove: { ...Typography.caption, fontSize: 12, color: Colors.error },
 });

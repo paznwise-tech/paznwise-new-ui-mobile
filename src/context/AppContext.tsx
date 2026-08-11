@@ -4,6 +4,9 @@ import { ARTWORKS as INITIAL_ARTWORKS, PERFORMERS as INITIAL_PERFORMERS } from '
 import { FeedService, FeedPost, CreatePostData, UpdatePostData, InteractData } from '@/services/feedService';
 import { AuthStorage } from '@/services/authStorage';
 import { UserService } from '@/services/userService';
+import { WishlistService } from '@/services/wishlistService';
+import { connectSocket, disconnectSocket } from '@/services/socket';
+import { clearAuthUserIdCache } from '@/services/currentUser';
 
 // ─────────────────────────────────────────────────────────
 // Context Type Definitions
@@ -109,12 +112,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const loginWithProfile = useCallback((profile: Partial<UserProfile>) => {
     setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+    connectSocket().catch(() => {}); // open real-time connection on fresh login
   }, []);
 
   const loadProfile = useCallback(async () => {
     try {
       const profile = await UserService.getMyProfile();
       setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+      connectSocket().catch(() => {}); // open real-time connection once authenticated
+      // Sync wishlist from backend
+      WishlistService.getWishlist()
+        .then(items => setFavorites(items.map(i => i.id)))
+        .catch(() => {});
     } catch (e) {
       console.warn('[AppContext] loadProfile failed:', e);
     }
@@ -148,6 +157,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await AuthService.logoutApi(refreshToken).catch(() => {});
       }
     } finally {
+      disconnectSocket();
+      clearAuthUserIdCache();
       await AuthStorage.clearTokens();
       setUser(prev => ({ ...prev, isLoggedIn: false }));
     }
@@ -187,8 +198,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleFavorite = useCallback((id: number) => {
     setFavorites(prev => {
       if (prev.includes(id)) {
+        WishlistService.removeFromWishlist(String(id)).catch(() => {
+          setFavorites(curr => (curr.includes(id) ? curr : [...curr, id]));
+        });
         return prev.filter(favId => favId !== id);
       } else {
+        WishlistService.addToWishlist(String(id)).catch(() => {
+          setFavorites(curr => curr.filter(f => f !== id));
+        });
         return [...prev, id];
       }
     });
