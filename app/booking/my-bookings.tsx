@@ -1,17 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { useBookings } from '@/context/AppContext';
+import { BookingService } from '@/services/bookingService';
 import { Booking } from '@/types';
-
-const INITIAL_BOOKINGS: Booking[] = [
-  { id: 'BK-001', performerId: 1, performerName: 'Priya Sharma', performerType: 'Live Painting', date: 'Jul 24, 2026', eventDetails: 'Taj Falaknuma', price: '₹9,350', status: 'confirmed', performerImg: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=300&h=200&fit=crop', createdAt: new Date().toISOString() },
-  { id: 'BK-002', performerId: 3, performerName: 'Ananya Krishnan', performerType: 'Dance', date: 'Aug 15, 2026', eventDetails: 'ITC Grand Chola', price: '₹11,800', status: 'pending', performerImg: 'https://images.unsplash.com/photo-1547036967-23d11aacaee0?w=300&h=200&fit=crop', createdAt: new Date().toISOString() },
-  { id: 'BK-003', performerId: 4, performerName: 'Kavya Menon', performerType: 'Mehendi', date: 'Jun 2, 2026', eventDetails: 'Bandra, Mumbai', price: '₹4,200', status: 'completed', performerImg: 'https://images.unsplash.com/photo-1583467875522-d48a15d26c55?w=300&h=200&fit=crop', createdAt: new Date().toISOString() },
-];
 
 const STATUS_COLORS: Record<string, string> = {
   confirmed: '#4CAF7D',
@@ -23,24 +17,44 @@ const STATUS_COLORS: Record<string, string> = {
 const TABS = ['All', 'Upcoming', 'Completed'];
 
 export default function MyBookings() {
-  const { bookings } = useBookings();
-  const [tab, setTab] = useState('All');
+  const [bookings, setBookings]   = useState<Booking[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [tab, setTab]             = useState('All');
 
-  const allBookings = useMemo(() => {
-    return [...bookings, ...INITIAL_BOOKINGS];
-  }, [bookings]);
+  const load = useCallback(async () => {
+    try {
+      const data = await BookingService.getMyBookings();
+      setBookings(data);
+    } catch (e: any) {
+      console.warn('[MyBookings] load error:', e.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    load().finally(() => setLoading(false));
+  }, [load]);
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    load().finally(() => setRefreshing(false));
+  }, [load]);
 
   const filtered = useMemo(() => {
-    return allBookings.filter(b => {
+    return bookings.filter(b => {
       if (tab === 'Upcoming')  return b.status === 'confirmed' || b.status === 'pending';
       if (tab === 'Completed') return b.status === 'completed';
       return true;
     });
-  }, [allBookings, tab]);
+  }, [bookings, tab]);
 
   const renderBookingItem = useCallback(({ item }: { item: Booking }) => (
     <TouchableOpacity style={styles.card} activeOpacity={0.85}>
-      <Image source={{ uri: item.performerImg }} style={styles.cardImg} contentFit="cover" transition={300} />
+      {item.performerImg ? (
+        <Image source={{ uri: item.performerImg }} style={styles.cardImg} contentFit="cover" transition={300} />
+      ) : (
+        <View style={[styles.cardImg, { backgroundColor: Colors.bgCard }]} />
+      )}
       <View style={styles.cardBody}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardTitle}>{item.performerName}</Text>
@@ -48,13 +62,13 @@ export default function MyBookings() {
             <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>{item.status}</Text>
           </View>
         </View>
-        <Text style={styles.cardType}>{item.performerType}</Text>
+        {item.performerType ? <Text style={styles.cardType}>{item.performerType}</Text> : null}
         <View style={styles.cardMeta}>
-          <Text style={styles.cardMetaText}>📅 {item.date}</Text>
-          <Text style={styles.cardMetaText} numberOfLines={1}>📍 {item.eventDetails}</Text>
+          {item.date ? <Text style={styles.cardMetaText}>📅 {item.date}</Text> : null}
+          {item.eventDetails ? <Text style={styles.cardMetaText} numberOfLines={1}>📍 {item.eventDetails}</Text> : null}
         </View>
         <View style={styles.cardFooter}>
-          <Text style={styles.cardTotal}>{item.price}</Text>
+          {item.price ? <Text style={styles.cardTotal}>{item.price}</Text> : <View />}
           <TouchableOpacity style={styles.viewBtn}>
             <Text style={styles.viewBtnText}>View details →</Text>
           </TouchableOpacity>
@@ -83,16 +97,32 @@ export default function MyBookings() {
         </View>
       </SafeAreaView>
 
-      <FlatList
-        data={filtered}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        keyExtractor={i => i.id}
-        renderItem={renderBookingItem}
-        initialNumToRender={5}
-        maxToRenderPerBatch={5}
-        windowSize={3}
-      />
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator color={Colors.gold} size="large" />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+          keyExtractor={i => i.id}
+          renderItem={renderBookingItem}
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={3}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.gold} />
+          }
+          ListEmptyComponent={
+            <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
+              <Text style={{ ...Typography.body, fontSize: 14, color: Colors.creamDim }}>
+                No bookings yet
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }

@@ -127,4 +127,19 @@ export const AuthService = {
     });
     return res.data;
   },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await fetchApi<any>('/api/auth/change-password', {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
+
+  async deleteAccount(): Promise<void> {
+    await fetchApi<any>('/api/users/me', {
+      method: 'DELETE',
+      requiresAuth: true,
+    });
+  },
 };

@@ -1,19 +1,21 @@
-import { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { StarRow } from '@/components/ui/StarRow';
-import { useAppData, useBookings } from '@/context/AppContext';
+import { ArtistServiceApi } from '@/services/artistService';
+import { BookingService } from '@/services/bookingService';
+import { Performer } from '@/types';
 
 export default function BookDetail() {
-  const { id } = useLocalSearchParams();
-  const { performers } = useAppData();
-  const { addBooking } = useBookings();
+  const { id } = useLocalSearchParams<{ id: string }>();
 
-  const performer = performers.find(p => p.id === Number(id)) ?? performers[0];
+  const [performer, setPerformer]   = useState<(Performer & { serviceId: string }) | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const [date, setDate]           = useState('');
   const [startTime, setStartTime] = useState('6:00 PM');
@@ -22,39 +24,77 @@ export default function BookDetail() {
   const [guests, setGuests]       = useState(50);
   const [notes, setNotes]         = useState('');
 
-  // Extract base fee from performer price string (e.g., "₹8,000+" -> 8000)
-  const baseFee = useMemo(() => {
-    const num = performer.price.replace(/[^\d]/g, '');
-    return num ? parseInt(num, 10) : 5000; // default to 5000 if not parsable
-  }, [performer.price]);
+  useEffect(() => {
+    if (!id) return;
+    ArtistServiceApi.getServiceById(String(id))
+      .then(s => { if (s) setPerformer(s); })
+      .catch(err => console.warn('[BookDetail] load error:', err))
+      .finally(() => setLoading(false));
+  }, [id]);
 
-  const travelFee = 500;
-  const platformFee = Math.round(baseFee * 0.1);
+  const baseFee = useMemo(() => {
+    if (!performer) return 5000;
+    const num = performer.price.replace(/[^\d]/g, '');
+    return num ? parseInt(num, 10) : 5000;
+  }, [performer]);
+
+  const travelFee     = 500;
+  const platformFee   = Math.round(baseFee * 0.1);
   const totalEstimation = baseFee + travelFee + platformFee;
 
-  const handleConfirmBooking = useCallback(() => {
-    if (!date) {
-      alert('Please enter a booking date');
-      return;
-    }
-    if (!venue) {
-      alert('Please enter a venue or location');
-      return;
-    }
+  const handleConfirmBooking = useCallback(async () => {
+    if (!date)  { alert('Please enter a booking date'); return; }
+    if (!venue) { alert('Please enter a venue or location'); return; }
+    if (!performer || submitting) return;
 
-    addBooking({
-      performerId: performer.id,
-      performerName: performer.name,
-      performerType: performer.type,
-      performerImg: performer.img,
-      date,
-      eventDetails: `${startTime} · ${duration} · ${guests} guests · at ${venue}`,
-      price: `₹${totalEstimation.toLocaleString('en-IN')}`,
-    });
+    setSubmitting(true);
+    try {
+      const result = await BookingService.bookService(performer.serviceId, {
+        date,
+        startTime,
+        duration,
+        venue,
+        guestCount: guests,
+        notes,
+        totalPrice: totalEstimation,
+      });
+      router.replace({
+        pathname: '/booking/confirmed',
+        params: {
+          performerName: performer.name,
+          bookingId: result?.id ?? '',
+          date,
+          venue,
+          amount: String(totalEstimation),
+        },
+      } as any);
+    } catch (e: any) {
+      alert(e.message ?? 'Failed to submit booking. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [date, venue, startTime, duration, guests, notes, totalEstimation, performer, submitting]);
 
-    alert('Booking request sent successfully!');
-    router.push('/booking/my-bookings' as any);
-  }, [date, venue, startTime, duration, guests, totalEstimation, performer, addBooking]);
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={Colors.gold} size="large" />
+      </View>
+    );
+  }
+
+  if (!performer) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }}>
+        <Text style={{ color: Colors.creamDim, fontSize: 16, textAlign: 'center' }}>
+          Performer not found.
+        </Text>
+        <TouchableOpacity style={{ marginTop: Spacing.md }} onPress={() => router.back()}>
+          <Text style={{ color: Colors.gold, fontSize: 14 }}>← Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -83,7 +123,6 @@ export default function BookDetail() {
             <Text style={styles.price}>{performer.price}</Text>
           </View>
 
-          {/* Section: Event Details */}
           <Text style={styles.sectionTitle}>Event Details</Text>
 
           <View style={styles.fieldGroup}>
@@ -99,31 +138,18 @@ export default function BookDetail() {
           <View style={styles.fieldRow}>
             <View style={[styles.fieldGroup, { flex: 1 }]}>
               <Text style={styles.fieldLabel}>Start Time</Text>
-              <TextInput
-                value={startTime}
-                onChangeText={setStartTime}
-                placeholder="6:00 PM"
-                placeholderTextColor={Colors.creamFaint}
-                style={styles.input}
-              />
+              <TextInput value={startTime} onChangeText={setStartTime} placeholder="6:00 PM" placeholderTextColor={Colors.creamFaint} style={styles.input} />
             </View>
             <View style={[styles.fieldGroup, { flex: 1 }]}>
               <Text style={styles.fieldLabel}>Duration</Text>
-              <TextInput
-                value={duration}
-                onChangeText={setDuration}
-                placeholder="3 hrs"
-                placeholderTextColor={Colors.creamFaint}
-                style={styles.input}
-              />
+              <TextInput value={duration} onChangeText={setDuration} placeholder="3 hrs" placeholderTextColor={Colors.creamFaint} style={styles.input} />
             </View>
           </View>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Venue / Location</Text>
             <TextInput
-              value={venue}
-              onChangeText={setVenue}
+              value={venue} onChangeText={setVenue}
               placeholder="Event address or venue name"
               placeholderTextColor={Colors.creamFaint}
               style={styles.input}
@@ -185,7 +211,7 @@ export default function BookDetail() {
       {/* CTA */}
       <View style={styles.bottomCta}>
         <GoldButton
-          label={`Confirm Booking · ₹${totalEstimation.toLocaleString('en-IN')}`}
+          label={submitting ? 'Submitting…' : `Confirm Booking · ₹${totalEstimation.toLocaleString('en-IN')}`}
           onPress={handleConfirmBooking}
           size="lg"
           fullWidth

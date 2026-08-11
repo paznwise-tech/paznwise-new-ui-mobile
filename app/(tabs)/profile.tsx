@@ -6,11 +6,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { useUser } from '@/context/AppContext';
 import { useCallback, useMemo, useEffect, useState } from 'react';
+import { MessageService } from '@/services/messageService';
 import { FullPhotoModal } from '@/components/ui/FullPhotoModal';
 
 const MENU_ITEMS = [
   { icon: '🖼', label: 'My Orders',        sub: 'Track your artwork purchases',    route: '/product/cart' },
-  { icon: '🎨', label: 'Sell Artwork',      sub: 'List, manage & sell your art',   route: '/product/my-listings' },
+  { icon: '🎨', label: 'Sell Artwork',      sub: 'List, manage & sell your art',   route: '/sell' },
   { icon: '📸', label: 'My Posts',           sub: 'Manage, edit & share your artwork',     route: '/feed/my-posts' },
   { icon: '🎵', label: 'My Bookings',      sub: 'Performer bookings & events',     route: '/booking/my-bookings' },
   { icon: '💬', label: 'Messages',          sub: 'Chat with artists & sellers',     route: '/messages' },
@@ -22,11 +23,19 @@ const MENU_ITEMS = [
 export default function Profile() {
   const { user, logout, loadProfile } = useUser();
   const [photoVisible, setPhotoVisible] = useState(false);
+  const [totalUnread, setTotalUnread] = useState(0);
 
   const isLoggedIn = user.isLoggedIn;
 
   useEffect(() => {
     if (isLoggedIn) loadProfile();
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    MessageService.getConversations()
+      .then(convos => setTotalUnread(convos.reduce((s, c) => s + (c.unreadCount ?? 0), 0)))
+      .catch(() => {});
   }, [isLoggedIn]);
 
   const roleText = useMemo(() => {
@@ -132,20 +141,30 @@ export default function Profile() {
 
         {/* Menu */}
         <View style={styles.menu}>
-          {MENU_ITEMS.map(item => (
-            <TouchableOpacity
-              key={item.label}
-              style={styles.menuItem}
-              onPress={() => item.route && router.push(item.route as any)}
-            >
-              <Text style={styles.menuIcon}>{item.icon}</Text>
-              <View style={styles.menuText}>
-                <Text style={styles.menuLabel}>{item.label}</Text>
-                <Text style={styles.menuSub}>{item.sub}</Text>
-              </View>
-              <Text style={styles.menuArrow}>›</Text>
-            </TouchableOpacity>
-          ))}
+          {MENU_ITEMS.map(item => {
+            const unreadBadge = item.label === 'Messages' && totalUnread > 0;
+            return (
+              <TouchableOpacity
+                key={item.label}
+                style={styles.menuItem}
+                onPress={() => item.route && router.push(item.route as any)}
+              >
+                <Text style={styles.menuIcon}>{item.icon}</Text>
+                <View style={styles.menuText}>
+                  <View style={styles.menuLabelRow}>
+                    <Text style={styles.menuLabel}>{item.label}</Text>
+                    {unreadBadge && (
+                      <View style={styles.menuBadge}>
+                        <Text style={styles.menuBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.menuSub}>{item.sub}</Text>
+                </View>
+                <Text style={styles.menuArrow}>›</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <TouchableOpacity style={styles.logout} onPress={handleSignOut}>
@@ -199,7 +218,10 @@ const styles = StyleSheet.create({
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md, marginBottom: 2, borderWidth: 1, borderColor: Colors.border },
   menuIcon: { fontSize: 20, width: 32 },
   menuText: { flex: 1 },
+  menuLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   menuLabel: { ...Typography.bodySemibold, fontSize: 14 },
+  menuBadge: { minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: 9, backgroundColor: Colors.error, alignItems: 'center', justifyContent: 'center' },
+  menuBadgeText: { color: '#fff', fontSize: 10, fontFamily: 'Inter_700Bold' },
   menuSub: { ...Typography.caption, fontSize: 11, marginTop: 2 },
   menuArrow: { color: Colors.creamDim, fontSize: 20 },
   logout: { margin: Spacing.lg, padding: Spacing.md, alignItems: 'center' },

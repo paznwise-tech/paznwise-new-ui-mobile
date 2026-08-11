@@ -1,5 +1,8 @@
-import { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Modal, ActivityIndicator } from 'react-native';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Dimensions, Modal, ActivityIndicator, NativeSyntheticEvent, NativeScrollEvent,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -9,6 +12,7 @@ import { StarRow } from '@/components/ui/StarRow';
 import { useCart, useFavorites } from '@/context/AppContext';
 import { useProductDetail } from '@/hooks/useProducts';
 import { UserService, PublicUser } from '@/services/userService';
+import { ReviewService, Review } from '@/services/reviewService';
 import { API_BASE_URL } from '@/services/api';
 
 const { width } = Dimensions.get('window');
@@ -23,17 +27,37 @@ export default function ProductDetail() {
   const [showCartModal, setShowCartModal] = useState(false);
   const [seller, setSeller] = useState<PublicUser | null>(null);
 
-  // Fetch seller profile once we have the product's sellerId
+  // Carousel state
+  const [imgIdx, setImgIdx] = useState(0);
+  const carouselRef = useRef<ScrollView>(null);
+
+  // Reviews state
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [avgRating, setAvgRating] = useState(0);
+  const [reviewCount, setReviewCount] = useState(0);
+
   useEffect(() => {
     if (!product?.sellerId) return;
-    UserService.getProfileById(product.sellerId)
-      .then(setSeller)
-      .catch(() => {});
+    UserService.getProfileById(product.sellerId).then(setSeller).catch(() => {});
   }, [product?.sellerId]);
 
-  // We are still using local context for favorites and cart until those APIs are integrated
-  const liked = product ? isFavorite(Number(product.id)) : false; // Note: if ID is uuid this needs string matching in context later
+  useEffect(() => {
+    if (!id) return;
+    ReviewService.getProductReviews(id).then(({ reviews: r, avgRating: avg, count }) => {
+      setReviews(r);
+      setAvgRating(avg);
+      setReviewCount(count);
+    });
+  }, [id]);
+
+  const liked = product ? isFavorite(Number(product.id)) : false;
   const inCart = product ? cart.some(c => c.id === Number(product.id)) : false;
+
+  const getImageUrl = (url?: string) => {
+    if (!url) return 'https://via.placeholder.com/400?text=No+Image';
+    if (url.startsWith('http')) return url;
+    return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  };
 
   const handleLikePress = useCallback(() => {
     if (product) toggleFavorite(Number(product.id));
@@ -43,7 +67,6 @@ export default function ProductDetail() {
     if (inCart) {
       router.push('/product/cart' as any);
     } else if (product) {
-      // Mock converting ProductResponse to CartItem/Artwork for local context
       addToCart({
         id: Number(product.id) || Date.now(),
         title: product.title,
@@ -70,11 +93,10 @@ export default function ProductDetail() {
     }
   }, [product, addToCart]);
 
-  const getImageUrl = (url?: string) => {
-    if (!url) return 'https://via.placeholder.com/400?text=No+Image';
-    if (url.startsWith('http')) return url;
-    return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-  };
+  const handleCarouselScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+    setImgIdx(idx);
+  }, []);
 
   if (loading) {
     return (
@@ -93,16 +115,48 @@ export default function ProductDetail() {
     );
   }
 
-  const coverImage = getImageUrl(product.thumbnailUrl ?? product.productImages?.[0] ?? product.images?.[0]);
+  // Build deduped image list: thumbnail first, then productImages
+  const rawImages = [product.thumbnailUrl, ...(product.productImages ?? []), ...(product.images ?? [])]
+    .filter((v): v is string => Boolean(v))
+    .filter((v, i, a) => a.indexOf(v) === i);
+  const images = rawImages.length > 0 ? rawImages.map(getImageUrl) : ['https://via.placeholder.com/400?text=No+Image'];
+
+  const coverImage = images[0];
+
+  const displayRating = avgRating > 0 ? avgRating : 4.8;
+  const displayCount = reviewCount > 0 ? reviewCount : 20;
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
 
-        {/* Hero image */}
+        {/* Hero carousel */}
         <View style={styles.heroWrap}>
-          <Image source={{ uri: coverImage }} style={styles.heroImg} contentFit="cover" transition={300} />
-          <LinearGradient colors={['rgba(13,27,42,0.6)', 'transparent', 'rgba(13,27,42,0.4)']} style={StyleSheet.absoluteFill} />
+          <ScrollView
+            ref={carouselRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleCarouselScroll}
+            scrollEventThrottle={16}
+            style={{ width, height: 380 }}
+          >
+            {images.map((uri, idx) => (
+              <Image
+                key={idx}
+                source={{ uri }}
+                style={{ width, height: 380 }}
+                contentFit="cover"
+                transition={300}
+              />
+            ))}
+          </ScrollView>
+
+          <LinearGradient
+            colors={['rgba(13,27,42,0.6)', 'transparent', 'rgba(13,27,42,0.4)']}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
 
           {/* Back */}
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
@@ -133,6 +187,22 @@ export default function ProductDetail() {
             )}
           </View>
 
+          {/* Dot indicators */}
+          {images.length > 1 && (
+            <View style={styles.dotRow}>
+              {images.map((_, i) => (
+                <View key={i} style={[styles.dot, i === imgIdx && styles.dotActive]} />
+              ))}
+            </View>
+          )}
+
+          {/* Image counter */}
+          {images.length > 1 && (
+            <View style={styles.imgCounter}>
+              <Text style={styles.imgCounterText}>{imgIdx + 1}/{images.length}</Text>
+            </View>
+          )}
+
           {/* Price overlay */}
           <View style={styles.priceOverlay}>
             <Text style={styles.priceLabel}>Price</Text>
@@ -149,7 +219,9 @@ export default function ProductDetail() {
           {/* Title & rating */}
           <Text style={styles.title}>{product.title}</Text>
           <View style={styles.ratingRow}>
-            <StarRow rating={4.8} count={20} />
+            <TouchableOpacity onPress={() => setTab('about')}>
+              <StarRow rating={displayRating} count={displayCount} />
+            </TouchableOpacity>
             {(product.medium || product.artStyle || product.brand) && (
               <Text style={styles.medium}>
                 {[product.medium, product.artStyle].filter(Boolean).join(' · ') || product.brand}
@@ -170,16 +242,10 @@ export default function ProductDetail() {
             )}
             <View style={styles.artistInfo}>
               <Text style={styles.artistName}>
-                {seller
-                  ? (seller.name || seller.username || 'Artist')
-                  : (product.brand || 'View Profile')}
+                {seller ? (seller.name || seller.username || 'Artist') : (product.brand || 'View Profile')}
               </Text>
               <Text style={styles.artistSub}>
-                {seller?.isArtist
-                  ? 'Verified Artist'
-                  : seller?.isPerformer
-                  ? 'Performer'
-                  : 'Seller'}
+                {seller?.isArtist ? 'Verified Artist' : seller?.isPerformer ? 'Performer' : 'Seller'}
               </Text>
             </View>
             {seller?.isVerified && (
@@ -193,7 +259,9 @@ export default function ProductDetail() {
           <View style={styles.tabs}>
             {(['about', 'details', 'policies'] as const).map(t => (
               <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
-                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
+                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -201,7 +269,7 @@ export default function ProductDetail() {
           {tab === 'about' && (
             <View style={styles.tabContent}>
               <Text style={styles.desc}>{product.description || 'No description provided.'}</Text>
-              
+
               {product.tags && product.tags.length > 0 && (
                 <View style={styles.tagsContainer}>
                   {product.tags.map(tag => (
@@ -210,6 +278,34 @@ export default function ProductDetail() {
                     </View>
                   ))}
                 </View>
+              )}
+
+              {/* Reviews section */}
+              <View style={styles.reviewsHeader}>
+                <Text style={styles.reviewsTitle}>Reviews</Text>
+                {reviewCount > 0 && (
+                  <View style={styles.reviewsSummary}>
+                    <Text style={styles.reviewsAvg}>{displayRating.toFixed(1)}</Text>
+                    <StarRow rating={displayRating} count={0} />
+                    <Text style={styles.reviewsCount}>({displayCount})</Text>
+                  </View>
+                )}
+              </View>
+
+              {reviews.length === 0 ? (
+                <Text style={styles.noReviews}>No reviews yet. Be the first to review!</Text>
+              ) : (
+                reviews.slice(0, 3).map(r => (
+                  <View key={r.id} style={styles.reviewCard}>
+                    <View style={styles.reviewTop}>
+                      <StarRow rating={r.rating} count={0} />
+                      <Text style={styles.reviewDate}>
+                        {new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </Text>
+                    </View>
+                    <Text style={styles.reviewComment}>{r.comment}</Text>
+                  </View>
+                ))
               )}
             </View>
           )}
@@ -296,7 +392,7 @@ export default function ProductDetail() {
         </View>
       </View>
 
-      {/* Added to Cart Success Modal */}
+      {/* Added to Cart Modal */}
       <Modal visible={showCartModal} transparent animationType="fade" onRequestClose={() => setShowCartModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -304,7 +400,7 @@ export default function ProductDetail() {
             <Text style={styles.modalSuccessIcon}>✓</Text>
             <Text style={styles.modalHeading}>Added to Cart</Text>
             <Text style={styles.modalSubheading}>This product has been added to your cart.</Text>
-            
+
             <View style={styles.modalItem}>
               <Image source={{ uri: coverImage }} style={styles.modalItemImg} contentFit="cover" />
               <View style={styles.modalItemBody}>
@@ -316,10 +412,7 @@ export default function ProductDetail() {
             <View style={styles.modalActions}>
               <GoldButton
                 label="View Cart"
-                onPress={() => {
-                  setShowCartModal(false);
-                  router.push('/product/cart' as any);
-                }}
+                onPress={() => { setShowCartModal(false); router.push('/product/cart' as any); }}
                 fullWidth
                 size="md"
               />
@@ -336,8 +429,7 @@ export default function ProductDetail() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  heroWrap: { width, height: 380, position: 'relative' },
-  heroImg: { width: '100%', height: '100%' },
+  heroWrap: { width, height: 380, position: 'relative', overflow: 'hidden' },
   backBtn: { position: 'absolute', top: 52, left: Spacing.md, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(13,27,42,0.7)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: Colors.border },
   backIcon: { color: Colors.cream, fontSize: 18 },
   actions: { position: 'absolute', top: 52, right: Spacing.md, gap: Spacing.sm },
@@ -346,6 +438,11 @@ const styles = StyleSheet.create({
   statusBadges: { position: 'absolute', top: 52, left: Spacing.xl + 40, flexDirection: 'row', gap: Spacing.xs },
   badge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border },
   badgeText: { ...Typography.label },
+  dotRow: { position: 'absolute', bottom: 52, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
+  dotActive: { width: 18, backgroundColor: Colors.gold },
+  imgCounter: { position: 'absolute', top: 52, left: 0, right: 0, alignItems: 'center' },
+  imgCounterText: { ...Typography.label, fontSize: 9, color: 'rgba(255,255,255,0.7)' },
   priceOverlay: { position: 'absolute', bottom: Spacing.md, right: Spacing.md, backgroundColor: 'rgba(13,27,42,0.85)', padding: Spacing.md, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.borderGold },
   priceLabel: { ...Typography.label, fontSize: 9, color: Colors.creamDim },
   price: { ...Typography.display, fontSize: 22, color: Colors.gold },
@@ -373,6 +470,16 @@ const styles = StyleSheet.create({
   tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
   tagBadge: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border },
   tagText: { ...Typography.caption, color: Colors.cream },
+  reviewsHeader: { marginTop: Spacing.lg, marginBottom: Spacing.sm },
+  reviewsTitle: { ...Typography.heading, fontSize: 18, marginBottom: Spacing.xs },
+  reviewsSummary: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  reviewsAvg: { ...Typography.display, fontSize: 24, color: Colors.gold },
+  reviewsCount: { ...Typography.caption, fontSize: 13 },
+  noReviews: { ...Typography.caption, fontSize: 13, color: Colors.creamDim, fontStyle: 'italic' },
+  reviewCard: { backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md, marginTop: Spacing.sm, borderWidth: 1, borderColor: Colors.border, gap: Spacing.xs },
+  reviewTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reviewDate: { ...Typography.caption, fontSize: 11 },
+  reviewComment: { ...Typography.body, fontSize: 14, color: Colors.creamDim, lineHeight: 20 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
   detailKey: { ...Typography.label, fontSize: 10, color: Colors.creamDim },
   detailVal: { ...Typography.bodySemibold, fontSize: 13, color: Colors.cream },

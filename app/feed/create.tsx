@@ -16,6 +16,7 @@ export default function CreateFeedPost() {
   const [error, setError] = useState<string | null>(null);
 
   const [images, setImages] = useState<PickedImage[]>([]);
+  const [video, setVideo] = useState<PickedImage | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [style, setStyle] = useState('');
@@ -43,13 +44,35 @@ export default function CreateFeedPost() {
     }
   }, []);
 
+  const pickVideo = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission required', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['videos'],
+      allowsMultipleSelection: false,
+      videoMaxDuration: 120,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets.length > 0) {
+      const a = result.assets[0];
+      setVideo({
+        uri: a.uri,
+        name: a.fileName ?? `post_video_${Date.now()}.mp4`,
+        type: a.mimeType ?? 'video/mp4',
+      });
+    }
+  }, []);
+
   const removeImage = useCallback((uri: string) => {
     setImages(prev => prev.filter(i => i.uri !== uri));
   }, []);
 
   const handleSubmit = async () => {
-    if (images.length === 0) {
-      Alert.alert('Image required', 'Please add at least one image to your post.');
+    if (images.length === 0 && !video) {
+      Alert.alert('Media required', 'Please add at least one image or a video to your post.');
       return;
     }
     try {
@@ -57,6 +80,7 @@ export default function CreateFeedPost() {
       setError(null);
       await FeedService.createPost({
         images,
+        video: video ?? undefined,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         style: style.trim() || undefined,
@@ -100,7 +124,7 @@ export default function CreateFeedPost() {
         <View style={styles.section}>
           {/* Images */}
           <Text style={styles.sectionTitle}>Photos</Text>
-          <Text style={styles.sectionSub}>Add up to 10 images. At least one is required.</Text>
+          <Text style={styles.sectionSub}>Add up to 10 images.</Text>
 
           <View style={styles.imageGrid}>
             {images.map((img, idx) => (
@@ -123,6 +147,27 @@ export default function CreateFeedPost() {
               </TouchableOpacity>
             )}
           </View>
+
+          <View style={styles.divider} />
+
+          {/* Video */}
+          <Text style={styles.sectionTitle}>Video</Text>
+          <Text style={styles.sectionSub}>Optionally add one video (up to 2 minutes).</Text>
+
+          {video ? (
+            <View style={styles.videoTile}>
+              <Text style={styles.videoIcon}>▶</Text>
+              <Text style={styles.videoName} numberOfLines={1}>{video.name}</Text>
+              <TouchableOpacity style={styles.removeBtn} onPress={() => setVideo(null)}>
+                <Text style={styles.removeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.addVideoTile} onPress={pickVideo}>
+              <Text style={styles.addImageIcon}>🎬</Text>
+              <Text style={styles.addImageLabel}>Add Video</Text>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.divider} />
 
@@ -235,6 +280,20 @@ const styles = StyleSheet.create({
   },
   addImageIcon: { fontSize: 26, color: Colors.gold },
   addImageLabel: { ...Typography.caption, fontSize: 10, color: Colors.gold },
+  addVideoTile: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    width: '48%', height: 56, borderRadius: Radius.md,
+    borderWidth: 1.5, borderColor: Colors.borderGold, borderStyle: 'dashed',
+    paddingHorizontal: Spacing.md, backgroundColor: Colors.bgCard,
+  },
+  videoTile: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.bgCard, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.borderGold,
+    padding: Spacing.md, position: 'relative',
+  },
+  videoIcon: { fontSize: 22, color: Colors.gold },
+  videoName: { ...Typography.caption, fontSize: 13, color: Colors.cream, flex: 1 },
   field: { gap: 6 },
   fieldLabel: { ...Typography.label, fontSize: 9, color: Colors.creamDim },
   input: {

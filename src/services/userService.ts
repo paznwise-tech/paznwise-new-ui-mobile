@@ -1,10 +1,10 @@
-import { fetchApi, API_BASE_URL } from './api';
+import { fetchApi, MEDIA_BASE_URL } from './api';
 import { ApiResponse } from '@/types';
 
 function resolveAvatarUrl(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('http')) return url;
-  return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
 export interface PublicUser {

@@ -1,18 +1,82 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, FlatList, TouchableOpacity, Dimensions } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, FlatList,
+  TouchableOpacity, Dimensions, ActivityIndicator,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { ArtCard } from '@/components/product/ArtCard';
-import { StarRow } from '@/components/ui/StarRow';
-import { ARTWORKS } from '@/constants/data';
+import { UserService, PublicUser } from '@/services/userService';
 
 const { width } = Dimensions.get('window');
 
+const PLACEHOLDER_COVER  = 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800&h=300&fit=crop';
+const PLACEHOLDER_AVATAR = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop';
+
 export default function ArtistProfile() {
-  const [tab, setTab] = useState<'works' | 'about' | 'events'>('works');
-  const [following, setFollowing] = useState(false);
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [tab, setTab]               = useState<'works' | 'about' | 'events'>('works');
+  const [following, setFollowing]   = useState(false);
+  const [profile, setProfile]       = useState<PublicUser | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [followLoading, setFollowLoading] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    UserService.getProfileById(id)
+      .then(async p => {
+        setProfile(p);
+        try {
+          const status = await UserService.getFollowStatus(p.id);
+          setFollowing(status.isFollowing);
+        } catch {}
+      })
+      .catch(err => console.warn('[ArtistProfile] load error:', err))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  const handleFollowToggle = useCallback(async () => {
+    if (!profile || followLoading) return;
+    setFollowLoading(true);
+    try {
+      if (following) {
+        await UserService.unfollow(profile.id);
+        setFollowing(false);
+      } else {
+        await UserService.follow(profile.id);
+        setFollowing(true);
+      }
+    } catch (e: any) {
+      console.warn('[ArtistProfile] follow error:', e.message);
+    } finally {
+      setFollowLoading(false);
+    }
+  }, [profile, following, followLoading]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator color={Colors.gold} size="large" />
+      </View>
+    );
+  }
+
+  const name        = profile?.name           || 'Artist';
+  const bio         = profile?.bio            || '';
+  const location    = profile?.location       || '';
+  const avatarUri   = profile?.avatar         || PLACEHOLDER_AVATAR;
+  const posts       = (profile?.posts ?? []) as any[];
+  const followers   = profile?.followersCount  ?? 0;
+  const followingCt = profile?.followingCount  ?? 0;
+  const postsCount  = profile?.postsCount      ?? 0;
+  const totalLikes  = profile?.totalLikes      ?? 0;
+
+  const coverImg    = posts[0]?.imageUrls?.[0] ?? posts[0]?.mediaUrls?.[0] ?? PLACEHOLDER_COVER;
+
+  const fmtCount = (n: number) =>
+    n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -20,7 +84,7 @@ export default function ArtistProfile() {
 
         {/* Cover banner */}
         <View style={styles.cover}>
-          <Image source={{ uri: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800&h=300&fit=crop' }} style={styles.coverImg} contentFit="cover" transition={300} />
+          <Image source={{ uri: coverImg }} style={styles.coverImg} contentFit="cover" transition={300} />
           <LinearGradient colors={['rgba(13,27,42,0.3)', 'rgba(13,27,42,0.9)']} style={StyleSheet.absoluteFill} />
           <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
             <Text style={styles.backIcon}>←</Text>
@@ -29,19 +93,26 @@ export default function ArtistProfile() {
 
         {/* Avatar + info */}
         <View style={styles.profileSection}>
-          <Image source={{ uri: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&h=120&fit=crop' }} style={styles.avatar} contentFit="cover" />
+          <Image source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.name}>Priya Sharma</Text>
-              <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
+              <Text style={styles.name}>{name}</Text>
+              {profile?.isVerified && (
+                <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
+              )}
             </View>
-            <Text style={styles.tagline}>Contemporary painter · Nature & urban sublime</Text>
-            <Text style={styles.location}>📍 Mumbai, Maharashtra</Text>
-            <StarRow rating={4.9} count={47} />
+            {bio ? <Text style={styles.tagline} numberOfLines={2}>{bio}</Text> : null}
+            {location ? <Text style={styles.location}>📍 {location}</Text> : null}
           </View>
           <View style={styles.followRow}>
-            <TouchableOpacity style={[styles.followBtn, following && styles.followingBtn]} onPress={() => setFollowing(!following)}>
-              <Text style={[styles.followText, following && { color: Colors.creamDim }]}>{following ? 'Following' : 'Follow'}</Text>
+            <TouchableOpacity
+              style={[styles.followBtn, following && styles.followingBtn]}
+              onPress={handleFollowToggle}
+              disabled={followLoading}
+            >
+              <Text style={[styles.followText, following && { color: Colors.creamDim }]}>
+                {following ? 'Following' : 'Follow'}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.msgBtn} onPress={() => router.push('/messages/index' as any)}>
               <Text style={styles.msgIcon}>💬</Text>
@@ -51,7 +122,12 @@ export default function ArtistProfile() {
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          {[['23', 'Works'], ['1.2K', 'Followers'], ['84', 'Sales'], ['8', 'Exhibitions']].map(([v, l]) => (
+          {[
+            [fmtCount(postsCount),  'Works'],
+            [fmtCount(followers),   'Followers'],
+            [fmtCount(followingCt), 'Following'],
+            [fmtCount(totalLikes),  'Likes'],
+          ].map(([v, l]) => (
             <View key={l} style={styles.stat}>
               <Text style={styles.statVal}>{v}</Text>
               <Text style={styles.statLabel}>{l}</Text>
@@ -63,59 +139,56 @@ export default function ArtistProfile() {
         <View style={styles.tabs}>
           {(['works', 'about', 'events'] as const).map(t => (
             <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
-              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
+              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {tab === 'works' && (
-          <FlatList
-            data={ARTWORKS.slice(0, 6)}
-            numColumns={2}
-            scrollEnabled={false}
-            columnWrapperStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}
-            contentContainerStyle={{ gap: Spacing.sm, paddingBottom: Spacing.md }}
-            keyExtractor={i => String(i.id)}
-            renderItem={({ item }) => <ArtCard item={item} onPress={() => router.push(`/product/${item.id}` as any)} />}
-          />
+          posts.length === 0 ? (
+            <View style={styles.emptyTab}>
+              <Text style={styles.emptyTabText}>No works posted yet</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={posts.slice(0, 12)}
+              numColumns={2}
+              scrollEnabled={false}
+              columnWrapperStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}
+              contentContainerStyle={{ gap: Spacing.sm, paddingBottom: Spacing.md }}
+              keyExtractor={p => String(p.id)}
+              renderItem={({ item: p }) => {
+                const imgUri = p.imageUrls?.[0] ?? p.mediaUrls?.[0] ?? '';
+                return (
+                  <TouchableOpacity style={styles.postCard} activeOpacity={0.85}>
+                    <Image source={{ uri: imgUri }} style={styles.postImg} contentFit="cover" transition={200} />
+                    {p.title ? (
+                      <Text style={styles.postTitle} numberOfLines={1}>{p.title}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          )
         )}
 
         {tab === 'about' && (
           <View style={styles.aboutSection}>
-            <Text style={styles.bio}>Priya Sharma is a Mumbai-based contemporary artist whose work explores the liminal spaces between nature and urbanity. With over 10 years of practice, her paintings have been exhibited across India and internationally, and are held in private collections in the UK, UAE, and Singapore.</Text>
-
-            <Text style={styles.sectionTitle}>Education</Text>
-            {[
-              { year: '2013–15', deg: 'MFA in Fine Arts', school: 'Sarojini Naidu School of Arts, Hyderabad' },
-              { year: '2010–13', deg: 'BFA in Visual Arts', school: 'Sir J. J. School of Art, Mumbai' },
-            ].map(e => (
-              <View key={e.year} style={styles.eduRow}>
-                <Text style={styles.eduYear}>{e.year}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.eduDeg}>{e.deg}</Text>
-                  <Text style={styles.eduSchool}>{e.school}</Text>
-                </View>
-              </View>
-            ))}
+            <Text style={styles.bio}>{bio || 'No bio available.'}</Text>
+            {location ? (
+              <>
+                <Text style={styles.sectionTitle}>Location</Text>
+                <Text style={styles.bio}>📍 {location}</Text>
+              </>
+            ) : null}
           </View>
         )}
 
         {tab === 'events' && (
           <View style={styles.aboutSection}>
-            {[
-              { year: '2024', title: 'Fluid Borders', venue: 'Chemould Prescott Road, Mumbai', type: 'Solo' },
-              { year: '2023', title: 'India Art Fair', venue: 'NSIC Grounds, New Delhi', type: 'Fair' },
-              { year: '2022', title: 'Breathing Spaces', venue: 'CIMA Gallery, Kolkata', type: 'Solo' },
-            ].map(ex => (
-              <View key={ex.title} style={styles.exRow}>
-                <Text style={styles.exYear}>{ex.year}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.exTitle}>{ex.title}</Text>
-                  <Text style={styles.exVenue}>{ex.venue}</Text>
-                </View>
-                <View style={styles.exTypeBadge}><Text style={styles.exType}>{ex.type}</Text></View>
-              </View>
-            ))}
+            <Text style={styles.bio}>No exhibitions listed.</Text>
           </View>
         )}
       </ScrollView>
@@ -155,14 +228,9 @@ const styles = StyleSheet.create({
   aboutSection: { paddingHorizontal: Spacing.md, gap: Spacing.md },
   bio: { ...Typography.body, fontSize: 15, lineHeight: 24, color: Colors.creamDim },
   sectionTitle: { ...Typography.heading, fontSize: 18, marginTop: Spacing.sm },
-  eduRow: { flexDirection: 'row', gap: Spacing.md, paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  eduYear: { ...Typography.label, fontSize: 9, color: Colors.gold, width: 50 },
-  eduDeg: { ...Typography.bodySemibold, fontSize: 13 },
-  eduSchool: { ...Typography.caption, fontSize: 11 },
-  exRow: { flexDirection: 'row', gap: Spacing.sm, alignItems: 'center', paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  exYear: { ...Typography.label, fontSize: 9, color: Colors.gold, width: 40 },
-  exTitle: { ...Typography.bodySemibold, fontSize: 13 },
-  exVenue: { ...Typography.caption, fontSize: 11 },
-  exTypeBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 2, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.borderGold },
-  exType: { ...Typography.label, fontSize: 9, color: Colors.gold },
+  emptyTab: { padding: Spacing.xl, alignItems: 'center' },
+  emptyTabText: { ...Typography.body, fontSize: 14, color: Colors.creamDim },
+  postCard: { flex: 1, backgroundColor: Colors.bgCard, borderRadius: Radius.md, overflow: 'hidden', borderWidth: 1, borderColor: Colors.border },
+  postImg: { width: '100%', aspectRatio: 1 },
+  postTitle: { ...Typography.caption, fontSize: 11, color: Colors.creamDim, padding: Spacing.xs },
 });

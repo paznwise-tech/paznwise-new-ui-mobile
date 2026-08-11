@@ -3,6 +3,10 @@ import { AuthStorage } from './authStorage';
 // Base URL for the API
 export const API_BASE_URL = 'https://paznwise.gujberry.com';
 
+// Base URL for uploaded media (avatars, product/chat images) stored on S3.
+// Relative keys like "users/<id>/avatar.jpg" resolve against this.
+export const MEDIA_BASE_URL = 'https://bucket-6ywfl4.s3.ap-south-1.amazonaws.com';
+
 interface FetchOptions extends RequestInit {
   requiresAuth?: boolean;
   authToken?: string; // explicit token override (e.g. registrationToken for signup)
