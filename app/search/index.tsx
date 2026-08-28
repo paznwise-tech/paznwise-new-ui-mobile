@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   TextInput, ActivityIndicator, Dimensions,
@@ -7,84 +7,67 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { SearchService, SearchUser } from '@/services/searchService';
-import { EventService } from '@/services/eventService';
-import { ProductService } from '@/services/productService';
-import { Event, Artwork } from '@/types';
+import {
+  SearchService, resolveMedia,
+  type UserResult, type ProductResult, type EventResult, type PostResult,
+} from '@/services/searchService';
+import { useDebounced } from '@/hooks/useDebounced';
 
 const { width } = Dimensions.get('window');
 
-const TABS = ['All', 'Art', 'Events', 'Artists'] as const;
+const TABS = ['All', 'Art', 'Events', 'Artists', 'Posts'] as const;
 type Tab = typeof TABS[number];
 
 const PLACEHOLDER_AVATAR = 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop';
 
-function resolveProductImg(p: any): string {
-  const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? p.img ?? p.thumbnail ?? '';
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=200';
-  if (url.startsWith('http')) return url;
-  return `https://bucket-6ywfl4.s3.ap-south-1.amazonaws.com/${url}`;
-}
-
-function normalizeArtwork(p: any): Artwork {
-  return {
-    id: typeof p.id === 'number' ? p.id : parseInt(p.id ?? '0') || 0,
-    title: p.title ?? p.name ?? 'Untitled',
-    price: p.price ?? 0,
-    artist: p.artist?.name ?? p.createdBy?.name ?? p.seller?.name ?? '',
-    location: p.location ?? '',
-    img: resolveProductImg(p),
-    category: p.category ?? undefined,
-  };
-}
+const FALLBACK_IMG = 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=200';
 
 export default function GlobalSearch() {
   const [query, setQuery]             = useState('');
   const [tab, setTab]                 = useState<Tab>('All');
   const [loading, setLoading]         = useState(false);
-  const [artists, setArtists]         = useState<SearchUser[]>([]);
-  const [events, setEvents]           = useState<Event[]>([]);
-  const [artworks, setArtworks]       = useState<Artwork[]>([]);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [artists, setArtists]         = useState<UserResult[]>([]);
+  const [events, setEvents]           = useState<EventResult[]>([]);
+  const [artworks, setArtworks]       = useState<ProductResult[]>([]);
+  const [posts, setPosts]             = useState<PostResult[]>([]);
 
-  const runSearch = useCallback(async (q: string) => {
-    if (q.trim().length < 2) {
-      setArtists([]); setEvents([]); setArtworks([]);
+  const debouncedQuery = useDebounced(query, 400);
+
+  /**
+   * One call covers every entity. This used to be three separate domain
+   * requests merged client-side, which meant posts were never searched and
+   * each tab ranked results differently.
+   */
+  useEffect(() => {
+    const q = debouncedQuery.trim();
+    if (q.length < 2) {
+      setArtists([]); setEvents([]); setArtworks([]); setPosts([]);
       return;
     }
+
+    let cancelled = false;
     setLoading(true);
-    try {
-      const [usersRes, eventsRes, productsRes] = await Promise.allSettled([
-        SearchService.searchUsers(q, { limit: 10 }),
-        EventService.getEvents({ search: q, limit: 10 }),
-        ProductService.getMarketplaceProducts({ search: q, limit: 10 }),
-      ]);
-      if (usersRes.status === 'fulfilled') setArtists(usersRes.value);
-      if (eventsRes.status === 'fulfilled') setEvents(eventsRes.value);
-      if (productsRes.status === 'fulfilled') {
-        const raw = productsRes.value as any;
-        const list: any[] = Array.isArray(raw.data) ? raw.data : (raw.data?.products ?? raw.data?.items ?? []);
-        // The API now does the searching. Filtering here as well used to be
-        // the only thing narrowing the results — the request ignored `q`, so
-        // the Art tab returned the same ten products for every query and then
-        // discarded most of them by title match.
-        setArtworks(list.map(normalizeArtwork));
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    SearchService.search(q, { limit: 30 })
+      .then(({ results }) => {
+        if (cancelled) return;
+        setArtists(results.filter((r): r is UserResult => r.type === 'user'));
+        setArtworks(results.filter((r): r is ProductResult => r.type === 'product'));
+        setEvents(results.filter((r): r is EventResult => r.type === 'event'));
+        setPosts(results.filter((r): r is PostResult => r.type === 'post'));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setArtists([]); setEvents([]); setArtworks([]); setPosts([]);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => runSearch(query), 500);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, runSearch]);
+    return () => { cancelled = true; };
+  }, [debouncedQuery]);
 
-  const hasResults = artists.length + events.length + artworks.length > 0;
+  const hasResults = artists.length + events.length + artworks.length + posts.length > 0;
   const isEmpty = query.trim().length >= 2 && !loading && !hasResults;
 
-  const renderArtistItem = useCallback(({ item }: { item: SearchUser }) => (
+  const renderArtistItem = useCallback(({ item }: { item: UserResult }) => (
     <TouchableOpacity
       style={styles.artistItem}
       onPress={() => router.push(`/artist/${item.id}` as any)}
@@ -107,33 +90,63 @@ export default function GlobalSearch() {
     </TouchableOpacity>
   ), []);
 
-  const renderEventItem = useCallback(({ item }: { item: Event }) => (
+  const renderEventItem = useCallback(({ item }: { item: EventResult }) => (
     <TouchableOpacity
       style={styles.eventItem}
       onPress={() => router.push(`/events/${item.id}` as any)}
       activeOpacity={0.8}
     >
-      <Image source={{ uri: item.img }} style={styles.eventImg} contentFit="cover" transition={200} />
+      <View style={[styles.eventImg, { backgroundColor: Colors.bgInput }]} />
       <View style={styles.eventInfo}>
         <Text style={styles.eventTitle} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.eventMeta}>📅 {item.date}</Text>
-        {item.city ? <Text style={styles.eventMeta}>📍 {item.city}</Text> : null}
-        <Text style={styles.eventPrice}>{item.price === 0 ? 'Free' : `₹${item.price}`}</Text>
+        {item.eventDate ? (
+          <Text style={styles.eventMeta}>
+            📅 {new Date(item.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+          </Text>
+        ) : null}
+        {item.venueName ? <Text style={styles.eventMeta} numberOfLines={1}>📍 {item.venueName}</Text> : null}
       </View>
     </TouchableOpacity>
   ), []);
 
-  const renderArtworkItem = useCallback(({ item }: { item: Artwork }) => (
+  const renderArtworkItem = useCallback(({ item }: { item: ProductResult }) => (
     <TouchableOpacity
       style={styles.artworkItem}
       onPress={() => router.push(`/product/${item.id}` as any)}
       activeOpacity={0.8}
     >
-      <Image source={{ uri: item.img }} style={styles.artworkImg} contentFit="cover" transition={200} />
+      <Image
+        source={{ uri: resolveMedia(item.images?.[0]) ?? FALLBACK_IMG }}
+        style={styles.artworkImg}
+        contentFit="cover"
+        transition={200}
+      />
       <View style={styles.artworkInfo}>
         <Text style={styles.artworkTitle} numberOfLines={1}>{item.title}</Text>
-        {item.artist ? <Text style={styles.artworkArtist}>{item.artist}</Text> : null}
-        <Text style={styles.artworkPrice}>₹{item.price.toLocaleString('en-IN')}</Text>
+        {item.name ? <Text style={styles.artworkArtist}>{item.name}</Text> : null}
+        <Text style={styles.artworkPrice}>₹{Number(item.price).toLocaleString('en-IN')}</Text>
+      </View>
+    </TouchableOpacity>
+  ), []);
+
+  const renderPostItem = useCallback(({ item }: { item: PostResult }) => (
+    <TouchableOpacity
+      style={styles.eventItem}
+      onPress={() => router.push(`/feed/${item.id}` as any)}
+      activeOpacity={0.8}
+    >
+      <Image
+        source={{ uri: resolveMedia(item.imageUrl) ?? FALLBACK_IMG }}
+        style={styles.eventImg}
+        contentFit="cover"
+        transition={200}
+      />
+      <View style={styles.eventInfo}>
+        <Text style={styles.eventTitle} numberOfLines={1}>{item.title || 'Untitled post'}</Text>
+        {item.name ? <Text style={styles.eventMeta}>{item.name}</Text> : null}
+        {item.description ? (
+          <Text style={styles.eventMeta} numberOfLines={1}>{item.description}</Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   ), []);
@@ -141,6 +154,7 @@ export default function GlobalSearch() {
   const visibleArtists = (tab === 'All' || tab === 'Artists') ? artists : [];
   const visibleEvents  = (tab === 'All' || tab === 'Events')  ? events  : [];
   const visibleArtwork = (tab === 'All' || tab === 'Art')     ? artworks : [];
+  const visiblePosts   = (tab === 'All' || tab === 'Posts')   ? posts    : [];
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -232,6 +246,16 @@ export default function GlobalSearch() {
                   <Text style={styles.sectionTitle}>Artworks</Text>
                   {visibleArtwork.map(a => (
                     <View key={a.id}>{renderArtworkItem({ item: a } as any)}</View>
+                  ))}
+                </>
+              )}
+
+              {/* Posts section — searchable for the first time */}
+              {visiblePosts.length > 0 && (
+                <>
+                  <Text style={styles.sectionTitle}>Posts</Text>
+                  {visiblePosts.map(p => (
+                    <View key={p.id}>{renderPostItem({ item: p } as any)}</View>
                   ))}
                 </>
               )}

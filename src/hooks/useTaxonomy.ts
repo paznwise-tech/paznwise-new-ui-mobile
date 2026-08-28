@@ -26,6 +26,15 @@ export function useCategories() {
   };
 }
 
+export function useCategoryBySlug(slug: string | undefined) {
+  return useQuery({
+    queryKey: ['category', slug],
+    queryFn: () => TaxonomyService.getCategoryBySlug(String(slug)),
+    enabled: !!slug,
+    ...LONG_LIVED,
+  });
+}
+
 export function useHeroSlides() {
   return useQuery({
     queryKey: ['hero-slides'],

@@ -72,6 +72,26 @@ export const TaxonomyService = {
     });
   },
 
+  /** Resolves a URL slug to the real category, whose id filters the catalogue. */
+  async getCategoryBySlug(slug: string): Promise<Category | null> {
+    try {
+      const res = await fetchApi<any>(`/categories/slug/${encodeURIComponent(slug)}`, {
+        requiresAuth: false,
+      });
+      const c = res?.data ?? res?.category ?? res;
+      if (!c?.id) return null;
+      const label = c.name ?? c.title ?? c.label ?? '';
+      return {
+        id: String(c.id),
+        label,
+        slug: c.slug ?? slug,
+        color: colorFor(label),
+      };
+    } catch {
+      return null;
+    }
+  },
+
   async getHeroSlides(): Promise<HeroSlide[]> {
     const res = await fetchApi<any>('/hero-slides', { requiresAuth: false });
     return toList(res, 'slides', 'items').map((s: any) => ({
