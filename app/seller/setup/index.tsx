@@ -7,9 +7,19 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
-import { SellerService } from '@/services/sellerService';
+import { ArtistProfileService } from '@/services/artistProfileService';
+import { useUser } from '@/context/AppContext';
 
-const STEPS = ['Shop Info', 'Bank Details', 'Review'];
+/**
+ * Two steps, not three.
+ *
+ * There was a "Bank Details" step collecting a bank name, account number,
+ * IFSC and account-holder name. No endpoint on the API accepts any of it —
+ * POST /api/sellers/setup, which this screen called, does not exist. The
+ * data was gathered and discarded, which for a bank account number is worse
+ * than not asking. Payouts are handled outside the app.
+ */
+const STEPS = ['Your Details', 'Review'];
 
 function StepIndicator({ step, total }: { step: number; total: number }) {
   return (
@@ -41,46 +51,42 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export default function SellerSetup() {
+  const { updateUserProfile } = useUser();
   const [step, setStep]           = useState(0);
   const [shopName, setShopName]   = useState('');
   const [shopDesc, setShopDesc]   = useState('');
-  const [gst, setGst]             = useState('');
-  const [bankName, setBankName]   = useState('');
-  const [accountNo, setAccountNo] = useState('');
-  const [ifsc, setIfsc]           = useState('');
-  const [holderName, setHolderName] = useState('');
+  const [city, setCity]           = useState('');
   const [loading, setLoading]     = useState(false);
 
   const handleNext = useCallback(() => {
     if (step === 0) {
-      if (!shopName.trim()) { Alert.alert('Required', 'Please enter your shop name'); return; }
-    }
-    if (step === 1) {
-      if (!bankName.trim() || !accountNo.trim() || !ifsc.trim() || !holderName.trim()) {
-        Alert.alert('Required', 'Please fill in all bank details'); return;
-      }
+      if (!shopName.trim()) { Alert.alert('Required', 'Please enter your display name'); return; }
     }
     setStep(s => s + 1);
-  }, [step, shopName, bankName, accountNo, ifsc, holderName]);
+  }, [step, shopName]);
 
   const handleSubmit = useCallback(async () => {
     setLoading(true);
     try {
-      await SellerService.setup({
-        shopName,
-        shopDescription: shopDesc,
-        gstNumber: gst,
-        bankDetails: { bankName, accountNumber: accountNo, ifscCode: ifsc, accountHolderName: holderName },
+      // Selling is gated by the artist profile, not a separate seller
+      // record — that is where a display name, bio and city belong.
+      await ArtistProfileService.createProfile({
+        displayName: shopName.trim(),
+        bio: shopDesc.trim() || undefined,
+        city: city.trim() || undefined,
       });
-      Alert.alert('Success', 'Seller account set up successfully!', [
-        { text: 'Go to Dashboard', onPress: () => router.push('/seller/dashboard' as any) },
-      ]);
+      updateUserProfile({ isArtist: true });
+      Alert.alert(
+        'Profile created',
+        'Your seller profile has been created and is pending review. You can start preparing listings now.',
+        [{ text: 'Continue', onPress: () => router.replace('/seller/dashboard' as any) }],
+      );
     } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Setup failed. Please try again.');
+      Alert.alert('Could not create profile', e?.message ?? 'Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [shopName, shopDesc, gst, bankName, accountNo, ifsc, holderName]);
+  }, [shopName, shopDesc, city, updateUserProfile]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -100,16 +106,16 @@ export default function SellerSetup() {
 
         {step === 0 && (
           <>
-            <Text style={styles.stepDesc}>Tell buyers about your shop and the art you create.</Text>
-            <Field label="Shop Name">
+            <Text style={styles.stepDesc}>Tell buyers who you are and what you make.</Text>
+            <Field label="Display Name">
               <TextInput
                 style={styles.input}
-                placeholder="e.g. Priya's Canvas Studio"
+                placeholder="e.g. Priya Sharma"
                 placeholderTextColor={Colors.creamFaint}
                 value={shopName} onChangeText={setShopName}
               />
             </Field>
-            <Field label="Shop Description">
+            <Field label="About your work">
               <TextInput
                 style={[styles.input, styles.textarea]}
                 placeholder="Describe your art style, specializations, and what makes your work unique…"
@@ -119,13 +125,12 @@ export default function SellerSetup() {
                 value={shopDesc} onChangeText={setShopDesc}
               />
             </Field>
-            <Field label="GST Number (optional)">
+            <Field label="City (optional)">
               <TextInput
                 style={styles.input}
-                placeholder="22AAAAA0000A1Z5"
+                placeholder="e.g. Jaipur"
                 placeholderTextColor={Colors.creamFaint}
-                autoCapitalize="characters"
-                value={gst} onChangeText={setGst}
+                value={city} onChangeText={setCity}
               />
             </Field>
           </>
@@ -133,33 +138,11 @@ export default function SellerSetup() {
 
         {step === 1 && (
           <>
-            <Text style={styles.stepDesc}>Your bank details for receiving payments from sales.</Text>
-            <View style={styles.secureNote}>
-              <Text style={{ fontSize: 16 }}>🔒</Text>
-              <Text style={styles.secureText}>Your bank information is encrypted and secure</Text>
-            </View>
-            <Field label="Bank Name">
-              <TextInput style={styles.input} placeholder="e.g. State Bank of India" placeholderTextColor={Colors.creamFaint} value={bankName} onChangeText={setBankName} />
-            </Field>
-            <Field label="Account Holder Name">
-              <TextInput style={styles.input} placeholder="As per bank records" placeholderTextColor={Colors.creamFaint} value={holderName} onChangeText={setHolderName} />
-            </Field>
-            <Field label="Account Number">
-              <TextInput style={styles.input} placeholder="10-digit account number" placeholderTextColor={Colors.creamFaint} keyboardType="numeric" value={accountNo} onChangeText={setAccountNo} />
-            </Field>
-            <Field label="IFSC Code">
-              <TextInput style={styles.input} placeholder="e.g. SBIN0001234" placeholderTextColor={Colors.creamFaint} autoCapitalize="characters" value={ifsc} onChangeText={setIfsc} />
-            </Field>
-          </>
-        )}
-
-        {step === 2 && (
-          <>
             <Text style={styles.stepDesc}>Review your details before submitting.</Text>
             <View style={styles.reviewCard}>
-              <Text style={styles.reviewSection}>Shop Information</Text>
+              <Text style={styles.reviewSection}>Your Details</Text>
               <View style={styles.reviewRow}>
-                <Text style={styles.reviewKey}>Shop Name</Text>
+                <Text style={styles.reviewKey}>Display Name</Text>
                 <Text style={styles.reviewVal}>{shopName}</Text>
               </View>
               {shopDesc ? (
@@ -168,32 +151,21 @@ export default function SellerSetup() {
                   <Text style={[styles.reviewVal, { flex: 1 }]} numberOfLines={3}>{shopDesc}</Text>
                 </View>
               ) : null}
-              {gst ? (
+              {city ? (
                 <View style={styles.reviewRow}>
-                  <Text style={styles.reviewKey}>GST</Text>
-                  <Text style={styles.reviewVal}>{gst}</Text>
+                  <Text style={styles.reviewKey}>City</Text>
+                  <Text style={styles.reviewVal}>{city}</Text>
                 </View>
               ) : null}
             </View>
-            <View style={styles.reviewCard}>
-              <Text style={styles.reviewSection}>Bank Details</Text>
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewKey}>Bank</Text>
-                <Text style={styles.reviewVal}>{bankName}</Text>
-              </View>
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewKey}>Account</Text>
-                <Text style={styles.reviewVal}>••••{accountNo.slice(-4)}</Text>
-              </View>
-              <View style={styles.reviewRow}>
-                <Text style={styles.reviewKey}>IFSC</Text>
-                <Text style={styles.reviewVal}>{ifsc}</Text>
-              </View>
-            </View>
+            <Text style={styles.stepDesc}>
+              Your profile is reviewed before your listings go live. You can start
+              preparing them straight away.
+            </Text>
           </>
         )}
 
-        {step < 2 ? (
+        {step < STEPS.length - 1 ? (
           <GoldButton label="Continue →" onPress={handleNext} size="lg" fullWidth />
         ) : (
           <GoldButton
@@ -239,12 +211,6 @@ const styles = StyleSheet.create({
     ...Typography.body, fontSize: 15, color: Colors.cream,
   },
   textarea: { height: 100, textAlignVertical: 'top' },
-  secureNote: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    backgroundColor: Colors.success + '11', borderWidth: 1, borderColor: Colors.success + '44',
-    borderRadius: Radius.md, padding: Spacing.md,
-  },
-  secureText: { ...Typography.caption, fontSize: 13, color: Colors.success, flex: 1 },
   reviewCard: {
     backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
     borderWidth: 1, borderColor: Colors.border, padding: Spacing.md, gap: Spacing.sm,

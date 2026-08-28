@@ -7,10 +7,8 @@ import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { ProductService } from '@/services/productService';
-import { orderService } from '@/services/orderService';
+import { ProductService, type SellerDashboard as SellerDashboardData } from '@/services/productService';
 import { MEDIA_BASE_URL } from '@/services/api';
-import type { Order } from '@/types';
 
 function resolveImg(p: any): string {
   const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? '';
@@ -30,22 +28,19 @@ function StatBox({ label, value, sub }: { label: string; value: string; sub?: st
 }
 
 export default function SellerDashboard() {
-  const [products, setProducts]     = useState<any[]>([]);
-  const [orders, setOrders]         = useState<Order[]>([]);
+  const [data, setData]             = useState<SellerDashboardData | null>(null);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // One server-computed payload. Revenue and order counts previously came
+  // from summing the signed-in user's own order history, so anything they
+  // had bought was counted as money they had earned.
   const load = useCallback(async () => {
-    const [productsRes, ordersRes] = await Promise.allSettled([
-      ProductService.getMyProducts(),
-      orderService.getMyOrders(),
-    ]);
-    if (productsRes.status === 'fulfilled') {
-      const raw = productsRes.value as any;
-      const list = Array.isArray(raw.data) ? raw.data : (raw.data?.products ?? raw.data?.items ?? []);
-      setProducts(list);
+    try {
+      setData(await ProductService.getSellerDashboard());
+    } catch (e: any) {
+      console.warn('[SellerDashboard]', e?.message);
     }
-    if (ordersRes.status === 'fulfilled') setOrders(ordersRes.value);
   }, []);
 
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
@@ -55,9 +50,9 @@ export default function SellerDashboard() {
     load().finally(() => setRefreshing(false));
   }, [load]);
 
-  const totalRevenue = orders.reduce((s, o) => s + (o.totalAmount ?? 0), 0);
-  const delivered = orders.filter(o => o.status?.toLowerCase() === 'delivered').length;
-  const activeListings = products.filter(p => p.status === 'active' || p.isActive).length;
+  const stats = data?.stats;
+  const recentOrders = data?.recentOrders ?? [];
+  const topProducts = data?.topProducts ?? [];
 
   if (loading) {
     return (
@@ -88,11 +83,15 @@ export default function SellerDashboard() {
       >
         {/* Stats */}
         <View style={styles.statsRow}>
-          <StatBox label="Revenue" value={`₹${totalRevenue.toLocaleString('en-IN')}`} />
+          <StatBox label="Revenue" value={`₹${(stats?.totalRevenue ?? 0).toLocaleString('en-IN')}`} />
           <View style={styles.statDivider} />
-          <StatBox label="Orders" value={String(orders.length)} sub={`${delivered} delivered`} />
+          <StatBox label="Orders" value={String(stats?.totalOrders ?? 0)} />
           <View style={styles.statDivider} />
-          <StatBox label="Listings" value={String(products.length)} sub={`${activeListings} active`} />
+          <StatBox
+            label="Listings"
+            value={String(stats?.activeListings ?? 0)}
+            sub={stats?.pendingApproval ? `${stats.pendingApproval} in review` : undefined}
+          />
         </View>
 
         {/* Quick actions */}
@@ -115,64 +114,68 @@ export default function SellerDashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Recent orders */}
+        {/* Needs attention — the states a seller has to act on. */}
+        {stats && (stats.rejectedProducts > 0 || stats.outOfStock > 0 || stats.draftProducts > 0) && (
+          <>
+            <Text style={styles.sectionTitle}>Needs attention</Text>
+            <TouchableOpacity style={styles.attentionCard} onPress={() => router.push('/product/my-listings' as any)}>
+              {stats.rejectedProducts > 0 && (
+                <Text style={styles.attentionText}>
+                  {stats.rejectedProducts} rejected listing{stats.rejectedProducts === 1 ? '' : 's'} — fix and resubmit
+                </Text>
+              )}
+              {stats.outOfStock > 0 && (
+                <Text style={styles.attentionText}>{stats.outOfStock} out of stock</Text>
+              )}
+              {stats.draftProducts > 0 && (
+                <Text style={styles.attentionText}>{stats.draftProducts} draft{stats.draftProducts === 1 ? '' : 's'} not published</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
+
+        {/* Top products */}
+        {topProducts.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Best sellers</Text>
+            {topProducts.map((p) => (
+              <TouchableOpacity
+                key={p.id}
+                style={styles.orderCard}
+                onPress={() => router.push(`/product/${p.id}` as any)}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.orderItem} numberOfLines={1}>{p.title}</Text>
+                  <Text style={styles.orderMeta}>{p.unitsSold} sold</Text>
+                </View>
+                <Text style={styles.orderAmt}>₹{p.revenue.toLocaleString('en-IN')}</Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
+        {/* Recent orders — of this seller's products, not the user's own */}
         <Text style={styles.sectionTitle}>Recent Orders</Text>
-        {orders.length === 0 ? (
+        {recentOrders.length === 0 ? (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyIcon}>📦</Text>
             <Text style={styles.emptyText}>No orders yet</Text>
           </View>
         ) : (
-          orders.slice(0, 5).map(order => (
-            <View key={order.id} style={styles.orderCard}>
-              <View>
-                <Text style={styles.orderId}>#{String(order.id).slice(-8).toUpperCase()}</Text>
-                {order.items?.[0]?.title ? (
-                  <Text style={styles.orderItem} numberOfLines={1}>{order.items[0].title}</Text>
-                ) : null}
+          recentOrders.map(order => (
+            <View key={`${order.orderId}-${order.productId}`} style={styles.orderCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.orderId}>#{String(order.orderId).slice(-8).toUpperCase()}</Text>
+                <Text style={styles.orderItem} numberOfLines={1}>
+                  {order.productName}{order.quantity > 1 ? ` × ${order.quantity}` : ''}
+                </Text>
               </View>
               <View style={styles.orderRight}>
-                {order.totalAmount !== undefined && (
-                  <Text style={styles.orderAmt}>₹{order.totalAmount.toLocaleString('en-IN')}</Text>
-                )}
-                <Text style={[styles.orderStatus, { color: order.status === 'delivered' ? Colors.success : Colors.warning }]}>
-                  {order.status}
-                </Text>
+                <Text style={styles.orderAmt}>₹{order.amount.toLocaleString('en-IN')}</Text>
+                <Text style={styles.orderMeta}>{order.status}</Text>
               </View>
             </View>
           ))
-        )}
-
-        {/* My listings */}
-        <Text style={styles.sectionTitle}>My Listings</Text>
-        {products.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyIcon}>🖼️</Text>
-            <Text style={styles.emptyText}>No listings yet</Text>
-            <TouchableOpacity style={{ marginTop: Spacing.sm }} onPress={() => router.push('/product/create' as any)}>
-              <Text style={{ color: Colors.gold, fontSize: 14 }}>+ List your first artwork</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}>
-            {products.slice(0, 6).map((p, idx) => (
-              <TouchableOpacity
-                key={p.id ?? idx}
-                style={styles.productCard}
-                onPress={() => router.push(`/product/edit/${p.id}` as any)}
-                activeOpacity={0.8}
-              >
-                <Image source={{ uri: resolveImg(p) }} style={styles.productImg} contentFit="cover" />
-                <Text style={styles.productTitle} numberOfLines={1}>{p.title ?? 'Untitled'}</Text>
-                <Text style={styles.productPrice}>₹{(p.price ?? 0).toLocaleString('en-IN')}</Text>
-                <View style={[styles.productStatusBadge, { backgroundColor: p.status === 'active' || p.isActive ? Colors.success + '22' : Colors.warning + '22' }]}>
-                  <Text style={[styles.productStatusText, { color: p.status === 'active' || p.isActive ? Colors.success : Colors.warning }]}>
-                    {p.status ?? 'draft'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
         )}
       </ScrollView>
     </View>
@@ -180,6 +183,12 @@ export default function SellerDashboard() {
 }
 
 const styles = StyleSheet.create({
+  attentionCard: {
+    backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.warning + '66',
+    borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.sm, gap: 4,
+  },
+  attentionText: { ...Typography.body, fontSize: 13, color: Colors.warning },
+  orderMeta: { ...Typography.caption, fontSize: 11, marginTop: 2 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,

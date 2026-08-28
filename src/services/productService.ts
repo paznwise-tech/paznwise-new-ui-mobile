@@ -6,6 +6,36 @@ import {
   ApiResponse,
 } from '@/types';
 
+export interface SellerDashboard {
+  stats: {
+    totalRevenue: number;
+    totalOrders: number;
+    activeListings: number;
+    pendingApproval: number;
+    draftProducts: number;
+    rejectedProducts: number;
+    outOfStock: number;
+    avgRating: number;
+  };
+  recentOrders: Array<{
+    orderId: string;
+    productId: string;
+    productName: string;
+    quantity: number;
+    amount: number;
+    status: string;
+    createdAt: string;
+  }>;
+  topProducts: Array<{
+    id: string;
+    title: string;
+    thumbnailUrl: string | null;
+    revenue: number;
+    unitsSold: number;
+  }>;
+  revenueByMonth: Array<{ date: string; revenue: number }>;
+}
+
 export const ProductService = {
   // GET /api/products — cursor-based, public
   async getMarketplaceProducts(params?: {
@@ -31,6 +61,63 @@ export const ProductService = {
       method: 'GET',
       requiresAuth: false,
     });
+  },
+
+  /**
+   * Seller dashboard.
+   *
+   * Revenue, order count and listing counts are computed server-side from
+   * the seller's own paid order items. The screen previously summed the
+   * user's entire order history client-side, so their own purchases
+   * inflated their seller earnings.
+   */
+  async getSellerDashboard(): Promise<SellerDashboard> {
+    const res = await fetchApi<any>('/products/seller/dashboard', { requiresAuth: true });
+    const d = res?.data ?? res;
+    return {
+      stats: {
+        totalRevenue: Number(d?.stats?.totalRevenue ?? 0),
+        totalOrders: Number(d?.stats?.totalOrders ?? 0),
+        activeListings: Number(d?.stats?.activeListings ?? 0),
+        pendingApproval: Number(d?.stats?.pendingApproval ?? 0),
+        draftProducts: Number(d?.stats?.draftProducts ?? 0),
+        rejectedProducts: Number(d?.stats?.rejectedProducts ?? 0),
+        outOfStock: Number(d?.stats?.outOfStock ?? 0),
+        avgRating: Number(d?.stats?.avgRating ?? 0),
+      },
+      recentOrders: d?.recentOrders ?? [],
+      topProducts: d?.topProducts ?? [],
+      revenueByMonth: d?.revenueByMonth ?? [],
+    };
+  },
+
+  /** Quick stock edit from the listings screen. */
+  async updateStock(productId: string, stock: number): Promise<void> {
+    await fetchApi(`/products/${productId}/stock`, {
+      method: 'PATCH',
+      requiresAuth: true,
+      body: JSON.stringify({ stock }),
+    });
+  },
+
+  /** Send a rejected product back for review after fixing it. */
+  async resubmit(productId: string): Promise<void> {
+    await fetchApi(`/products/${productId}/resubmit`, { method: 'POST', requiresAuth: true });
+  },
+
+  async duplicate(productId: string): Promise<void> {
+    await fetchApi(`/products/${productId}/duplicate`, { method: 'POST', requiresAuth: true });
+  },
+
+  /** Hides a listing without deleting it or its order history. */
+  async archive(productId: string): Promise<void> {
+    await fetchApi(`/products/${productId}/archive`, { method: 'PATCH', requiresAuth: true });
+  },
+
+  async getProductOrders(productId: string): Promise<any[]> {
+    const res = await fetchApi<any>(`/products/${productId}/orders`, { requiresAuth: true });
+    const d = res?.data ?? res;
+    return Array.isArray(d) ? d : (d?.orders ?? d?.items ?? []);
   },
 
   // GET /api/products/{id} — public
