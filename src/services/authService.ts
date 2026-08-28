@@ -37,7 +37,7 @@ export const AuthService = {
   /** Send OTP — phone number (10-digit or E.164 e.g. +919876543210) */
   async sendOtp(phone: string): Promise<{ message: string; otp?: string }> {
     // API response has no `data` wrapper: { success, message, otp? }
-    const res = await fetchApi<{ success: boolean; message: string; otp?: string }>('/api/auth/send-otp', {
+    const res = await fetchApi<{ success: boolean; message: string; otp?: string }>('/auth/send-otp', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ phone }),
@@ -51,7 +51,7 @@ export const AuthService = {
    * - New user     → { isNewUser: true, registrationToken }
    */
   async verifyOtp(phone: string, otp: string): Promise<VerifyOtpResponse> {
-    const res = await fetchApi<ApiResponse<VerifyOtpResponse>>('/api/auth/verify-otp', {
+    const res = await fetchApi<ApiResponse<VerifyOtpResponse>>('/auth/verify-otp', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ phone, otp }),
@@ -70,7 +70,7 @@ export const AuthService = {
     confirmPassword: string,
     registrationToken: string,
   ): Promise<LoginResponse> {
-    const res = await fetchApi<ApiResponse<LoginResponse>>('/api/auth/signup', {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/signup', {
       method: 'POST',
       requiresAuth: false,
       authToken: registrationToken,
@@ -81,7 +81,7 @@ export const AuthService = {
 
   /** Password-based login (email / phone / username) */
   async login(identifier: string, password: string): Promise<LoginResponse> {
-    const res = await fetchApi<ApiResponse<LoginResponse>>('/api/auth/login', {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/login', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ identifier, password }),
@@ -91,7 +91,7 @@ export const AuthService = {
 
   /** Sends a JWT reset link to the user's email */
   async forgotPassword(email: string): Promise<{ message: string }> {
-    const res = await fetchApi<{ success: boolean; message: string }>('/api/auth/forgot-password', {
+    const res = await fetchApi<{ success: boolean; message: string }>('/auth/forgot-password', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ email }),
@@ -101,7 +101,7 @@ export const AuthService = {
 
   /** Resets password using the JWT token from the reset email */
   async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
-    const res = await fetchApi<{ success: boolean; message: string }>('/api/auth/reset-password', {
+    const res = await fetchApi<{ success: boolean; message: string }>('/auth/reset-password', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ token, newPassword }),
@@ -111,7 +111,7 @@ export const AuthService = {
 
   /** Revokes the server session — call before clearing local tokens */
   async logoutApi(refreshToken: string): Promise<void> {
-    await fetchApi('/api/auth/logout', {
+    await fetchApi('/auth/logout', {
       method: 'POST',
       requiresAuth: true,
       body: JSON.stringify({ refreshToken }),
@@ -120,7 +120,7 @@ export const AuthService = {
 
   /** Token rotation — exchange a refresh token for new access + refresh tokens */
   async refreshTokens(refreshToken: string): Promise<LoginResponse> {
-    const res = await fetchApi<ApiResponse<LoginResponse>>('/api/auth/refresh', {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/refresh', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ refreshToken }),
@@ -129,7 +129,7 @@ export const AuthService = {
   },
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    await fetchApi<any>('/api/auth/change-password', {
+    await fetchApi<any>('/auth/change-password', {
       method: 'POST',
       requiresAuth: true,
       body: JSON.stringify({ currentPassword, newPassword }),
@@ -137,7 +137,7 @@ export const AuthService = {
   },
 
   async deleteAccount(): Promise<void> {
-    await fetchApi<any>('/api/users/me', {
+    await fetchApi<any>('/users/me', {
       method: 'DELETE',
       requiresAuth: true,
     });

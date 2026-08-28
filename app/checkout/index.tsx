@@ -19,8 +19,8 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { orderService } from '@/services/orderService';
 import { addressService } from '@/services/addressService';
-import { couponService } from '@/services/couponService';
-import type { Address, AddressPayload, CheckoutSummary, Coupon } from '@/types';
+import { CouponService, type Coupon } from '@/services/couponService';
+import type { Address, AddressPayload, CheckoutSummary } from '@/types';
 import { useCart } from '@/context/AppContext';
 
 export default function CheckoutScreen() {
@@ -79,7 +79,7 @@ export default function CheckoutScreen() {
       }
 
       // 3. Fetch public coupons
-      const coupons = await couponService.getPublicCoupons();
+      const coupons = await CouponService.getCoupons();
       setPublicCoupons(coupons);
 
       // 4. Fetch summary
@@ -434,7 +434,10 @@ export default function CheckoutScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.publicCouponCode}>{c.code}</Text>
                       <Text style={styles.publicCouponDesc}>
-                        {c.title || (c.discountType === 'PERCENTAGE' ? `${c.value}% Off` : `₹${c.value} Off`)}
+                        {c.description ||
+                          (c.discountType === 'percentage'
+                            ? `${c.discount}% Off`
+                            : `₹${c.discount} Off`)}
                       </Text>
                     </View>
                     <Text style={styles.applyQuickText}>Apply Code</Text>

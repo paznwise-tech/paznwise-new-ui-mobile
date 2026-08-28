@@ -87,7 +87,7 @@ export const ArtistServiceApi = {
     if (params?.category && params.category !== 'All')              q.append('category', params.category);
 
     const qs = q.toString();
-    const res = await fetchApi<ServiceListResponse>(`/api/artist-services${qs ? `?${qs}` : ''}`, {
+    const res = await fetchApi<ServiceListResponse>(`/artist-services${qs ? `?${qs}` : ''}`, {
       requiresAuth: false,
     });
 
@@ -103,7 +103,7 @@ export const ArtistServiceApi = {
 
   async getServiceById(id: string): Promise<(Performer & { serviceId: string }) | null> {
     try {
-      const res = await fetchApi<ApiResponse<ApiArtistService>>(`/api/artist-services/${id}`, {
+      const res = await fetchApi<ApiResponse<ApiArtistService>>(`/artist-services/${id}`, {
         requiresAuth: false,
       });
       return normalizeService(res.data, 0);
@@ -113,7 +113,7 @@ export const ArtistServiceApi = {
   },
 
   async setAvailability(blockedDates: string[], availableTimeSlots: string[]): Promise<void> {
-    await fetchApi<any>('/api/artist-services/availability', {
+    await fetchApi<any>('/artist-services/availability', {
       method: 'PUT',
       requiresAuth: true,
       body: JSON.stringify({ blockedDates, availableTimeSlots }),

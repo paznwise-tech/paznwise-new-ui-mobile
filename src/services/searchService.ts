@@ -52,7 +52,7 @@ export const SearchService = {
     params.set('page', String(options?.page ?? 1));
     params.set('limit', String(options?.limit ?? 15));
 
-    const res = await fetchApi<any>(`/api/users/search?${params.toString()}`, { requiresAuth: true });
+    const res = await fetchApi<any>(`/users/search?${params.toString()}`, { requiresAuth: true });
     return extractUsers(res)
       .map(normalizeUser)
       .filter(u => u.id);

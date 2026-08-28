@@ -91,14 +91,14 @@ function normalizeBooking(b: ApiBooking): Booking {
 export const BookingService = {
   async bookService(serviceId: string, input: BookServiceInput): Promise<Booking> {
     const res = await fetchApi<ApiResponse<ApiBooking>>(
-      `/api/artist-services/${serviceId}/book`,
+      `/artist-services/${serviceId}/book`,
       { method: 'POST', requiresAuth: true, body: JSON.stringify(input) }
     );
     return normalizeBooking(res.data);
   },
 
   async getMyBookings(): Promise<Booking[]> {
-    const res = await fetchApi<BookingListResponse>('/api/artist-services/my-bookings', {
+    const res = await fetchApi<BookingListResponse>('/artist-services/my-bookings', {
       requiresAuth: true,
     });
     let list: ApiBooking[] = [];

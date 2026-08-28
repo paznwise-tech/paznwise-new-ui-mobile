@@ -8,7 +8,8 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ProductService } from '@/services/productService';
-import { OrderService, ApiOrder } from '@/services/orderService';
+import { orderService } from '@/services/orderService';
+import type { Order } from '@/types';
 
 function resolveImg(p: any): string {
   const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? '';
@@ -29,14 +30,14 @@ function StatBox({ label, value, sub }: { label: string; value: string; sub?: st
 
 export default function SellerDashboard() {
   const [products, setProducts]     = useState<any[]>([]);
-  const [orders, setOrders]         = useState<ApiOrder[]>([]);
+  const [orders, setOrders]         = useState<Order[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const [productsRes, ordersRes] = await Promise.allSettled([
       ProductService.getMyProducts(),
-      OrderService.getMyOrders(),
+      orderService.getMyOrders(),
     ]);
     if (productsRes.status === 'fulfilled') {
       const raw = productsRes.value as any;
@@ -124,7 +125,7 @@ export default function SellerDashboard() {
           orders.slice(0, 5).map(order => (
             <View key={order.id} style={styles.orderCard}>
               <View>
-                <Text style={styles.orderId}>#{order.id.slice(-8).toUpperCase()}</Text>
+                <Text style={styles.orderId}>#{String(order.id).slice(-8).toUpperCase()}</Text>
                 {order.items?.[0]?.title ? (
                   <Text style={styles.orderItem} numberOfLines={1}>{order.items[0].title}</Text>
                 ) : null}

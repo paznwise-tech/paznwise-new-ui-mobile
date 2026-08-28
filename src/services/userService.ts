@@ -130,7 +130,7 @@ export interface UpdateProfileData {
 
 export const UserService = {
   async getMyProfile(): Promise<PublicUser> {
-    const res = await fetchApi<ApiResponse<ProfileApiData>>('/api/user/profile/me', {
+    const res = await fetchApi<ApiResponse<ProfileApiData>>('/user/profile/me', {
       requiresAuth: true,
     });
     return normalizeProfile(res.data);
@@ -147,7 +147,7 @@ export const UserService = {
       form.append('avatar', { uri: data.avatarUri, type: data.avatarMimeType ?? 'image/jpeg', name: filename } as any);
     }
 
-    const res = await fetchApi<ApiResponse<ProfileApiData>>('/api/user/profile', {
+    const res = await fetchApi<ApiResponse<ProfileApiData>>('/user/profile', {
       method: 'PUT',
       requiresAuth: true,
       body: form,
@@ -156,7 +156,7 @@ export const UserService = {
   },
 
   async deleteMyProfile(): Promise<void> {
-    await fetchApi('/api/user/profile', {
+    await fetchApi('/user/profile', {
       method: 'DELETE',
       requiresAuth: true,
     });
@@ -165,14 +165,14 @@ export const UserService = {
   async getProfileById(id: string, seed?: Partial<PublicUser>): Promise<PublicUser> {
     // Try profile-record-id lookup first (works when id is a profile record id, e.g. from feed posts)
     try {
-      const res = await fetchApi<ApiResponse<ProfileApiData>>(`/api/user/profile/${id}`, {
+      const res = await fetchApi<ApiResponse<ProfileApiData>>(`/user/profile/${id}`, {
         requiresAuth: true,
       });
       return normalizeProfile(res.data);
     } catch (err: any) {
       // 4xx means the id is a user id, not a profile record id — build from counts + seed data
       if (err?.status >= 400 && err?.status < 500) {
-        const counts = await fetchApi<ApiResponse<UserCounts>>(`/api/users/${id}/counts`, {
+        const counts = await fetchApi<ApiResponse<UserCounts>>(`/users/${id}/counts`, {
           requiresAuth: true,
         }).then(r => r.data).catch(() => ({ followers: 0, following: 0, posts: 0, likes: 0 }));
         return {
@@ -195,7 +195,7 @@ export const UserService = {
 
   async getAllUsers(): Promise<UserSuggestion[]> {
     const res = await fetchApi<ApiResponse<SuggestionsApiData>>(
-      '/api/users/suggestions',
+      '/users/suggestions',
       { requiresAuth: true }
     );
     return Array.isArray(res.data?.users)
@@ -210,21 +210,21 @@ export const UserService = {
   },
 
   async follow(id: string): Promise<void> {
-    await fetchApi(`/api/users/follow/${id}`, {
+    await fetchApi(`/users/follow/${id}`, {
       method: 'POST',
       requiresAuth: true,
     });
   },
 
   async unfollow(id: string): Promise<void> {
-    await fetchApi(`/api/users/unfollow/${id}`, {
+    await fetchApi(`/users/unfollow/${id}`, {
       method: 'DELETE',
       requiresAuth: true,
     });
   },
 
   async getFollowers(id: string): Promise<FollowUser[]> {
-    const res = await fetchApi<ApiResponse<any[]>>(`/api/users/${id}/followers`, {
+    const res = await fetchApi<ApiResponse<any[]>>(`/users/${id}/followers`, {
       requiresAuth: true,
     });
     if (!Array.isArray(res.data)) return [];
@@ -243,7 +243,7 @@ export const UserService = {
   },
 
   async getFollowing(id: string): Promise<FollowUser[]> {
-    const res = await fetchApi<ApiResponse<any[]>>(`/api/users/${id}/following`, {
+    const res = await fetchApi<ApiResponse<any[]>>(`/users/${id}/following`, {
       requiresAuth: true,
     });
     if (!Array.isArray(res.data)) return [];
@@ -262,14 +262,14 @@ export const UserService = {
   },
 
   async getFollowStatus(id: string): Promise<FollowStatus> {
-    const res = await fetchApi<ApiResponse<FollowStatus>>(`/api/users/${id}/follow-status`, {
+    const res = await fetchApi<ApiResponse<FollowStatus>>(`/users/${id}/follow-status`, {
       requiresAuth: true,
     });
     return res.data;
   },
 
   async getCounts(id: string): Promise<UserCounts> {
-    const res = await fetchApi<ApiResponse<UserCounts>>(`/api/users/${id}/counts`, {
+    const res = await fetchApi<ApiResponse<UserCounts>>(`/users/${id}/counts`, {
       requiresAuth: true,
     });
     return res.data;

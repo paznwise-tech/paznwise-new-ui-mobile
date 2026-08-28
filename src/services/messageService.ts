@@ -76,7 +76,7 @@ export function getOtherParticipant(participants: string[], myUserId: string): s
 
 export const MessageService = {
   async getConversations(): Promise<Conversation[]> {
-    const res = await fetchApi<ApiResponse<Conversation[]>>('/api/messages/conversations', {
+    const res = await fetchApi<ApiResponse<Conversation[]>>('/messages/conversations', {
       requiresAuth: true,
     });
     return Array.isArray(res.data) ? res.data : [];
@@ -91,7 +91,7 @@ export const MessageService = {
     if (options?.limit !== undefined) params.set('limit', String(options.limit));
     const query = params.toString();
     const res = await fetchApi<ApiResponse<MessagesData>>(
-      `/api/messages/${conversationId}${query ? `?${query}` : ''}`,
+      `/messages/${conversationId}${query ? `?${query}` : ''}`,
       { requiresAuth: true }
     );
     return res.data;
@@ -102,7 +102,7 @@ export const MessageService = {
     message: string,
     messageType: MessageType = 'text'
   ): Promise<SendMessageResult> {
-    const res = await fetchApi<ApiResponse<SendMessageResult>>('/api/messages/send', {
+    const res = await fetchApi<ApiResponse<SendMessageResult>>('/messages/send', {
       method: 'POST',
       body: JSON.stringify({ receiverId, message, messageType }),
       requiresAuth: true,
@@ -120,7 +120,7 @@ export const MessageService = {
     form.append('image', { uri: imageUri, type: mimeType, name: filename } as any);
     form.append('receiverId', receiverId);
 
-    const res = await fetchApi<ApiResponse<UploadImageResult>>('/api/messages/upload', {
+    const res = await fetchApi<ApiResponse<UploadImageResult>>('/messages/upload', {
       method: 'POST',
       body: form,
       requiresAuth: true,
@@ -130,35 +130,35 @@ export const MessageService = {
 
   async markAsRead(conversationId: string): Promise<number> {
     const res = await fetchApi<ApiResponse<{ modifiedCount: number }>>(
-      `/api/messages/${conversationId}/read`,
+      `/messages/${conversationId}/read`,
       { method: 'PATCH', requiresAuth: true }
     );
     return res.data?.modifiedCount ?? 0;
   },
 
   async deleteConversation(conversationId: string): Promise<void> {
-    await fetchApi(`/api/messages/${conversationId}`, {
+    await fetchApi(`/messages/${conversationId}`, {
       method: 'DELETE',
       requiresAuth: true,
     });
   },
 
   async clearConversation(conversationId: string): Promise<void> {
-    await fetchApi(`/api/messages/${conversationId}/clear`, {
+    await fetchApi(`/messages/${conversationId}/clear`, {
       method: 'DELETE',
       requiresAuth: true,
     });
   },
 
   async deleteMessageForMe(messageId: string): Promise<void> {
-    await fetchApi(`/api/messages/${messageId}/me`, {
+    await fetchApi(`/messages/${messageId}/me`, {
       method: 'DELETE',
       requiresAuth: true,
     });
   },
 
   async deleteMessageForEveryone(messageId: string): Promise<void> {
-    await fetchApi(`/api/messages/${messageId}/everyone`, {
+    await fetchApi(`/messages/${messageId}/everyone`, {
       method: 'DELETE',
       requiresAuth: true,
     });

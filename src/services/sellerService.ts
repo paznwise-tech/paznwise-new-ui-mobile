@@ -14,7 +14,7 @@ export interface SellerSetupInput {
 
 export const SellerService = {
   async setup(input: SellerSetupInput): Promise<void> {
-    await fetchApi<any>('/api/sellers/setup', {
+    await fetchApi<any>('/sellers/setup', {
       method: 'POST',
       requiresAuth: true,
       body: JSON.stringify(input),

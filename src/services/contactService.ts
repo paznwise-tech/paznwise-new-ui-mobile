@@ -9,7 +9,7 @@ export interface ContactInput {
 
 export const ContactService = {
   async submit(input: ContactInput): Promise<void> {
-    await fetchApi<any>('/api/contact', {
+    await fetchApi<any>('/contact', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify(input),

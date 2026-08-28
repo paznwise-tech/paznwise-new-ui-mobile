@@ -41,8 +41,12 @@ export default function BookEventTicket() {
     }
     setSubmitting(true);
     try {
-      const tierId = selectedTier?.id ?? 'default';
-      await EventService.bookEvent(String(id), tierId, quantity);
+      await EventService.bookEvent({
+        eventId: String(id),
+        ticketTierId: selectedTier?.id,
+        seatsBooked: quantity,
+        totalPrice: (selectedTier?.price ?? 0) * quantity,
+      });
       alert('Registration successful! Check My Tickets for your ticket.');
       router.push('/event-bookings' as any);
     } catch (e: any) {

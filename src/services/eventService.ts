@@ -122,14 +122,14 @@ export const EventService = {
     search?: string;
   }): Promise<Event[]> {
     const q = new URLSearchParams();
-    if (params?.page)                                          q.append('page', String(params.page));
-    if (params?.limit)                                         q.append('limit', String(params.limit));
-    if (params?.category && params.category !== 'All')         q.append('category', params.category);
-    if (params?.city && params.city !== 'All Cities')          q.append('city', params.city);
-    if (params?.search)                                        q.append('search', params.search);
+    if (params?.page)                                  q.append('page', String(params.page));
+    if (params?.limit)                                 q.append('limit', String(params.limit));
+    if (params?.category && params.category !== 'All') q.append('category', params.category);
+    if (params?.city && params.city !== 'All Cities')  q.append('city', params.city);
+    if (params?.search)                                q.append('search', params.search);
 
     const qs = q.toString();
-    const res = await fetchApi<EventListResponse>(`/api/events${qs ? `?${qs}` : ''}`, {
+    const res = await fetchApi<EventListResponse>(`/events${qs ? `?${qs}` : ''}`, {
       requiresAuth: false,
     });
 
@@ -145,7 +145,7 @@ export const EventService = {
 
   async getEventById(id: string): Promise<ApiEventDetail | null> {
     try {
-      const res = await fetchApi<any>(`/api/events/${id}`, { requiresAuth: false });
+      const res = await fetchApi<any>(`/events/${id}`, { requiresAuth: false });
       const data = res.data ?? res.event ?? res;
       if (!data?.id && !data?.title) return null;
       return data as ApiEventDetail;
@@ -154,26 +154,68 @@ export const EventService = {
     }
   },
 
-  async bookEvent(
-    eventId: string,
-    tierId: string,
-    quantity: number,
-  ): Promise<{ ticketNumber?: string; id?: string }> {
-    const res = await fetchApi<any>(`/api/events/${eventId}/register`, {
+  async getEventSlots(eventId: string): Promise<any[]> {
+    const res = await fetchApi<any>(`/events/${eventId}/slots`, { requiresAuth: false });
+    const data = res?.data ?? res;
+    return Array.isArray(data) ? data : (data?.slots ?? []);
+  },
+
+  /**
+   * Reserve a booking.
+   *
+   * `POST /events/book` — there is no `/events/:id/register` route. When the
+   * event is paid the response carries a Razorpay order to settle; a free
+   * event comes back with no `razorpayOrderId` and is finished with
+   * `confirmBooking` instead.
+   */
+  async bookEvent(payload: {
+    eventId: string;
+    slotId?: string;
+    ticketTierId?: string;
+    seatsBooked: number;
+    seatIds?: string[];
+    totalPrice?: number;
+  }): Promise<any> {
+    const res = await fetchApi<any>('/events/book', {
       method: 'POST',
       requiresAuth: true,
-      body: JSON.stringify({ ticketTierId: tierId, quantity }),
+      body: JSON.stringify(payload),
     });
-    return res.data ?? res.ticket ?? res;
+    return res?.data ?? res;
   },
 
+  /** Finalises a booking that needed no payment. */
+  async confirmBooking(bookingId: string): Promise<any> {
+    const res = await fetchApi<any>(`/events/bookings/${bookingId}/confirm`, {
+      method: 'POST',
+      requiresAuth: true,
+    });
+    return res?.data ?? res;
+  },
+
+  async cancelBooking(bookingId: string): Promise<void> {
+    await fetchApi(`/events/bookings/${bookingId}/cancel`, {
+      method: 'POST',
+      requiresAuth: true,
+    });
+  },
+
+  /** The buyer's booked tickets. `GET /my-bookings` — there is no `/events/my-tickets`. */
   async getMyEventTickets(): Promise<ApiEventTicket[]> {
-    const res = await fetchApi<any>('/api/events/my-tickets', { requiresAuth: true });
-    const data = res.data ?? res;
+    const res = await fetchApi<any>('/my-bookings', { requiresAuth: true });
+    const data = res?.data ?? res;
     if (Array.isArray(data)) return data as ApiEventTicket[];
-    return (data?.tickets ?? data?.items ?? []) as ApiEventTicket[];
+    return (data?.bookings ?? data?.tickets ?? data?.items ?? []) as ApiEventTicket[];
   },
 
+  /** Events created by the current artist. */
+  async getMyCreatedEvents(): Promise<any[]> {
+    const res = await fetchApi<any>('/events/my-events', { requiresAuth: true });
+    const data = res?.data ?? res;
+    return Array.isArray(data) ? data : (data?.events ?? data?.items ?? []);
+  },
+
+  /** `POST /events/create` (ARTIST role) — plain `POST /events` is not a route. */
   async createEvent(data: {
     eventType: string;
     title: string;
@@ -191,7 +233,7 @@ export const EventService = {
     capacity?: number;
     bookingDeadline?: string;
   }): Promise<{ id?: string; submissionId?: string }> {
-    const res = await fetchApi<any>('/api/events', {
+    const res = await fetchApi<any>('/events/create', {
       method: 'POST',
       requiresAuth: true,
       body: JSON.stringify({
@@ -212,94 +254,7 @@ export const EventService = {
         organiserName: data.organiserName,
       }),
     });
-    const d = res.data ?? res.event ?? res;
+    const d = res?.data ?? res?.event ?? res;
     return { id: d?.id, submissionId: d?.submissionId ?? d?.id };
-import { fetchApi } from './api';
-import type { Event, ApiResponse } from '../types';
-
-export const eventService = {
-  /**
-   * Get all public events with optional filtering
-   */
-  async getEvents(params?: { category?: string; search?: string; venueName?: string }): Promise<Event[]> {
-    const qs = new URLSearchParams();
-    if (params?.category) qs.set('category', params.category);
-    if (params?.search) qs.set('search', params.search);
-    if (params?.venueName) qs.set('venueName', params.venueName);
-
-    const query = qs.toString();
-    const res = await fetchApi<ApiResponse<Event[]> | Event[]>(`/events${query ? `?${query}` : ''}`, {
-      requiresAuth: false,
-    });
-    if (Array.isArray(res)) return res;
-    return res.data || [];
-  },
-
-  /**
-   * Get event detail by ID
-   */
-  async getEventById(id: string | number): Promise<Event | null> {
-    const res = await fetchApi<ApiResponse<Event> | Event>(`/events/${id}`, {
-      requiresAuth: false,
-    });
-    if ('data' in res && res.data) return res.data;
-    return (res as Event) || null;
-  },
-
-  /**
-   * Create an event (Organizer/Artist)
-   */
-  async createEvent(formData: FormData): Promise<any> {
-    const res = await fetchApi<any>('/events/create', {
-      method: 'POST',
-      requiresAuth: true,
-      body: formData,
-    });
-    return res.data || res;
-  },
-
-  /**
-   * Reserve seats/ticket for an event
-   */
-  async bookEvent(payload: { eventId: string; slotId?: string; seatsBooked: number }): Promise<any> {
-    const res = await fetchApi<any>('/events/book', {
-      method: 'POST',
-      requiresAuth: true,
-      body: JSON.stringify(payload),
-    });
-    return res.data || res;
-  },
-
-  /**
-   * Confirm event ticket booking after payment
-   */
-  async confirmBooking(bookingId: string): Promise<any> {
-    const res = await fetchApi<any>(`/events/bookings/${bookingId}/confirm`, {
-      method: 'POST',
-      requiresAuth: true,
-    });
-    return res.data || res;
-  },
-
-  /**
-   * Get logged-in user's event ticket bookings
-   */
-  async getMyEventBookings(): Promise<any[]> {
-    const res = await fetchApi<ApiResponse<any[]> | any[]>('/my-bookings', {
-      requiresAuth: true,
-    });
-    if (Array.isArray(res)) return res;
-    return res.data || [];
-  },
-
-  /**
-   * Get organizer's created events
-   */
-  async getMyCreatedEvents(): Promise<Event[]> {
-    const res = await fetchApi<ApiResponse<Event[]> | Event[]>('/events/my-events', {
-      requiresAuth: true,
-    });
-    if (Array.isArray(res)) return res;
-    return res.data || [];
   },
 };

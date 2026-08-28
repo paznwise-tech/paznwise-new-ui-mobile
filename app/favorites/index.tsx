@@ -7,20 +7,17 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ArtCard } from '@/components/product/ArtCard';
-import { WishlistService } from '@/services/wishlistService';
-import { Artwork } from '@/types';
-
-type WishlistItem = Artwork & { wishlistId: string };
+import { FavoritesService, FavoriteItem } from '@/services/favoritesService';
 
 export default function Favorites() {
-  const [items, setItems]         = useState<WishlistItem[]>([]);
+  const [items, setItems]         = useState<FavoriteItem[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [removing, setRemoving]   = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const data = await WishlistService.getWishlist();
+      const data = await FavoritesService.getFavorites();
       setItems(data);
     } catch (e: any) {
       console.warn('[Favorites]', e.message);
@@ -34,17 +31,17 @@ export default function Favorites() {
     load().finally(() => setRefreshing(false));
   }, [load]);
 
-  const handleRemove = useCallback((item: WishlistItem) => {
+  const handleRemove = useCallback((item: FavoriteItem) => {
     Alert.alert('Remove from Saved', `Remove "${item.title}" from your saved items?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
-          setRemoving(item.wishlistId);
+          setRemoving(item.favoriteId);
           try {
-            await WishlistService.removeFromWishlist(String(item.id));
-            setItems(prev => prev.filter(i => i.wishlistId !== item.wishlistId));
+            await FavoritesService.removeFavorite(item.productId);
+            setItems(prev => prev.filter(i => i.favoriteId !== item.favoriteId));
           } catch (e: any) {
             Alert.alert('Error', e.message ?? 'Failed to remove');
           } finally {
@@ -79,7 +76,7 @@ export default function Favorites() {
       ) : (
         <FlatList
           data={items}
-          keyExtractor={i => i.wishlistId}
+          keyExtractor={i => i.favoriteId}
           numColumns={2}
           columnWrapperStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}
           contentContainerStyle={{ paddingTop: Spacing.sm, paddingBottom: 100, gap: Spacing.sm }}
@@ -94,9 +91,9 @@ export default function Favorites() {
                 onPress={() => router.push(`/product/${item.id}` as any)}
               />
               <TouchableOpacity
-                style={[styles.removeBtn, removing === item.wishlistId && { opacity: 0.5 }]}
+                style={[styles.removeBtn, removing === item.favoriteId && { opacity: 0.5 }]}
                 onPress={() => handleRemove(item)}
-                disabled={removing === item.wishlistId}
+                disabled={removing === item.favoriteId}
               >
                 <Text style={styles.removeBtnText}>♡ Remove</Text>
               </TouchableOpacity>

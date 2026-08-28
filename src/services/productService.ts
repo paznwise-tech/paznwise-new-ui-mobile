@@ -21,7 +21,7 @@ export const ProductService = {
     if (params?.status)     q.append('status', params.status);
 
     const qs = q.toString();
-    return fetchApi<ProductListResponse>(`/api/products${qs ? `?${qs}` : ''}`, {
+    return fetchApi<ProductListResponse>(`/products${qs ? `?${qs}` : ''}`, {
       method: 'GET',
       requiresAuth: false,
     });
@@ -29,7 +29,7 @@ export const ProductService = {
 
   // GET /api/products/{id} — public
   async getProductById(id: string): Promise<ApiResponse<ProductResponse>> {
-    return fetchApi<ApiResponse<ProductResponse>>(`/api/products/${id}`, {
+    return fetchApi<ApiResponse<ProductResponse>>(`/products/${id}`, {
       method: 'GET',
       requiresAuth: false,
     });
@@ -37,7 +37,7 @@ export const ProductService = {
 
   // GET /api/products/seller/me — auth required
   async getMyProducts(): Promise<ProductSellerListResponse> {
-    return fetchApi<ProductSellerListResponse>('/api/products/seller/me', {
+    return fetchApi<ProductSellerListResponse>('/products/seller/me', {
       method: 'GET',
       requiresAuth: true,
     });
@@ -45,7 +45,7 @@ export const ProductService = {
 
   // POST /api/products — multipart/form-data
   async createProduct(data: FormData): Promise<ApiResponse<ProductResponse>> {
-    return fetchApi<ApiResponse<ProductResponse>>('/api/products', {
+    return fetchApi<ApiResponse<ProductResponse>>('/products', {
       method: 'POST',
       body: data,
       requiresAuth: true,
@@ -54,7 +54,7 @@ export const ProductService = {
 
   // PUT /api/products/{id}
   async updateProduct(id: string, data: FormData): Promise<ApiResponse<ProductResponse>> {
-    return fetchApi<ApiResponse<ProductResponse>>(`/api/products/${id}`, {
+    return fetchApi<ApiResponse<ProductResponse>>(`/products/${id}`, {
       method: 'PUT',
       body: data,
       requiresAuth: true,
@@ -63,7 +63,7 @@ export const ProductService = {
 
   // DELETE /api/products/{id}
   async deleteProduct(id: string): Promise<ApiResponse<null>> {
-    return fetchApi<ApiResponse<null>>(`/api/products/${id}`, {
+    return fetchApi<ApiResponse<null>>(`/products/${id}`, {
       method: 'DELETE',
       requiresAuth: true,
     });
@@ -71,7 +71,7 @@ export const ProductService = {
 
   // PUT /api/products/{productId}/category
   async assignCategory(productId: string, categoryId: string): Promise<ApiResponse<ProductResponse>> {
-    return fetchApi<ApiResponse<ProductResponse>>(`/api/products/${productId}/category`, {
+    return fetchApi<ApiResponse<ProductResponse>>(`/products/${productId}/category`, {
       method: 'PUT',
       body: JSON.stringify({ categoryId }),
       requiresAuth: true,
@@ -80,7 +80,7 @@ export const ProductService = {
 
   // DELETE /api/products/{productId}/category
   async removeCategory(productId: string): Promise<ApiResponse<ProductResponse>> {
-    return fetchApi<ApiResponse<ProductResponse>>(`/api/products/${productId}/category`, {
+    return fetchApi<ApiResponse<ProductResponse>>(`/products/${productId}/category`, {
       method: 'DELETE',
       requiresAuth: true,
     });
