@@ -1,10 +1,11 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
-import { useUser, useAppData } from '@/context/AppContext';
+import { useUser } from '@/context/AppContext';
+import { ArtistProfileService } from '@/services/artistProfileService';
 
 const PERFORMER_TYPES = [
   { key: 'painter',    label: 'Visual Artist',    emoji: '🎨', from: '#E65100', to: '#FF7043' },
@@ -23,28 +24,38 @@ const PERFORMER_TYPES = [
 
 export default function RegisterArtist() {
   const { user, updateUserProfile } = useUser();
-  const { addPerformer } = useAppData();
   const [selected, setSelected] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleRegister = useCallback(() => {
-    if (!selected) return;
+  const handleRegister = useCallback(async () => {
+    if (!selected || submitting) return;
     const item = PERFORMER_TYPES.find(p => p.key === selected);
     const typeLabel = item?.label || 'Live Performer';
 
-    updateUserProfile({ isPerformer: true });
+    setSubmitting(true);
+    try {
+      await ArtistProfileService.createProfile({
+        displayName: user.name?.trim() || user.username?.trim() || 'Performer',
+        bio: user.bio || undefined,
+        city: user.location || undefined,
+        artStyles: [typeLabel],
+      });
+      updateUserProfile({ isPerformer: true });
 
-    addPerformer({
-      name: user.name || 'New Performer',
-      type: typeLabel,
-      price: '₹6,500+',
-      rating: 5.0,
-      reviews: 1,
-      img: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop',
-    });
-
-    alert(`Congratulations! You are now registered as a ${typeLabel}.`);
-    router.replace('/(tabs)');
-  }, [selected, user.name, updateUserProfile, addPerformer]);
+      // Deliberately does not claim registration is complete: the profile
+      // still has to be paid for and approved, and neither step is built
+      // yet, so the copy stops at what actually happened.
+      Alert.alert(
+        'Profile created',
+        `Your ${typeLabel} profile has been created and is pending review.`,
+        [{ text: 'OK', onPress: () => router.replace('/(tabs)') }],
+      );
+    } catch (e: any) {
+      Alert.alert('Could not create profile', e?.message ?? 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [selected, submitting, user.name, user.username, user.bio, user.location, updateUserProfile]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -86,10 +97,10 @@ export default function RegisterArtist() {
 
       <View style={styles.bottomBar}>
         <GoldButton
-          label="Continue →"
+          label={submitting ? 'Creating…' : 'Continue →'}
           onPress={handleRegister}
           size="lg" fullWidth
-          disabled={!selected}
+          disabled={!selected || submitting}
         />
       </View>
     </View>

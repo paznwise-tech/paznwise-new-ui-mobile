@@ -194,9 +194,17 @@ export default function Settings() {
           <View style={styles.rowDivider} />
           <SettingRow icon="✉️" label="Contact Us" onPress={() => router.push('/contact' as any)} />
           <View style={styles.rowDivider} />
-          <SettingRow icon="📄" label="Privacy Policy" onPress={() => {}} />
+          <SettingRow
+            icon="📄"
+            label="Privacy Policy"
+            onPress={() => router.push('/legal/privacy-policy' as any)}
+          />
           <View style={styles.rowDivider} />
-          <SettingRow icon="📜" label="Terms of Service" onPress={() => {}} />
+          <SettingRow
+            icon="📜"
+            label="Terms of Service"
+            onPress={() => router.push('/legal/terms-conditions' as any)}
+          />
         </View>
 
         {/* Danger zone */}

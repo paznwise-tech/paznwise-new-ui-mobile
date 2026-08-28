@@ -89,6 +89,7 @@ function RootNavigator() {
           <Stack.Screen name="discover/index" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="help/index" options={{ animation: 'slide_from_right' }} />
           <Stack.Screen name="contact/index" options={{ animation: 'slide_from_right' }} />
+          <Stack.Screen name="legal/[slug]" options={{ animation: 'slide_from_right' }} />
 
           {/* Requires a session. Every route here is behind `authenticate` on
               the API, so mounting them for a guest only yields 401s. Screens

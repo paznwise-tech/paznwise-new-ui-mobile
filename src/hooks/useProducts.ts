@@ -2,8 +2,21 @@ import { useState, useEffect, useCallback } from 'react';
 import { ProductService } from '../services/productService';
 import { ProductResponse } from '@/types';
 
-// Cursor-based infinite scroll for the public marketplace
-export function useMarketplaceProducts(limit = 20, categoryId?: string) {
+export interface MarketplaceFilters {
+  categoryId?: string;
+  search?: string;
+  sort?: 'newest' | 'price-asc' | 'price-desc' | 'popular' | 'rating';
+}
+
+/**
+ * Cursor-based infinite scroll for the public marketplace.
+ *
+ * Search and sort are sent to the server rather than applied to the loaded
+ * page: filtering client-side only ever saw the products already fetched,
+ * so results were wrong as soon as there was more than one page.
+ */
+export function useMarketplaceProducts(limit = 20, filters: MarketplaceFilters = {}) {
+  const { categoryId, search, sort } = filters;
   const [products, setProducts] = useState<ProductResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -18,6 +31,8 @@ export function useMarketplaceProducts(limit = 20, categoryId?: string) {
         cursor: cursorParam,
         limit,
         categoryId,
+        search,
+        sort,
       });
 
       const items = Array.isArray(res.data) ? res.data : [];
@@ -33,9 +48,9 @@ export function useMarketplaceProducts(limit = 20, categoryId?: string) {
     } finally {
       setLoading(false);
     }
-  }, [limit, categoryId]);
+  }, [limit, categoryId, search, sort]);
 
-  // Reset and refetch whenever category changes
+  // Reset and refetch whenever the filters change
   useEffect(() => {
     setCursor(undefined);
     setHasMore(true);

@@ -13,12 +13,18 @@ export const ProductService = {
     limit?: number;
     categoryId?: string;
     status?: string;
+    /** Full-text search; the API also accepts it as `q`. */
+    search?: string;
+    /** See src/product/product.repository.js — anything else falls back to newest. */
+    sort?: 'newest' | 'price-asc' | 'price-desc' | 'popular' | 'rating';
   }): Promise<ProductListResponse> {
     const q = new URLSearchParams();
     if (params?.cursor)     q.append('cursor', params.cursor);
     if (params?.limit)      q.append('limit', params.limit.toString());
     if (params?.categoryId) q.append('categoryId', params.categoryId);
     if (params?.status)     q.append('status', params.status);
+    if (params?.search)     q.append('search', params.search);
+    if (params?.sort)       q.append('sort', params.sort);
 
     const qs = q.toString();
     return fetchApi<ProductListResponse>(`/products${qs ? `?${qs}` : ''}`, {

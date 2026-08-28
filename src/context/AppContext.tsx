@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { Artwork, Performer, CartItem, Booking, UserProfile } from '@/types';
-import { ARTWORKS as INITIAL_ARTWORKS, PERFORMERS as INITIAL_PERFORMERS } from '@/constants/data';
+import { UserProfile } from '@/types';
 import { FeedService, FeedPost, CreatePostData, UpdatePostData, InteractData } from '@/services/feedService';
 import { AuthStorage } from '@/services/authStorage';
 import { UserService } from '@/services/userService';
@@ -46,11 +45,6 @@ interface FavoritesContextType {
   isFavorite: (id: number) => boolean;
 }
 
-interface BookingsContextType {
-  bookings: Booking[];
-  addBooking: (booking: Omit<Booking, 'id' | 'createdAt' | 'status'>) => void;
-}
-
 /**
  * Session lifecycle.
  *
@@ -73,13 +67,6 @@ interface UserContextType {
   loadProfile: () => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => void;
-}
-
-interface AppDataContextType {
-  artworks: Artwork[];
-  performers: Performer[];
-  addArtwork: (artwork: Omit<Artwork, 'id'>) => void;
-  addPerformer: (performer: Omit<Performer, 'id'>) => void;
 }
 
 interface FeedContextType {
@@ -105,9 +92,7 @@ interface FeedContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
-const BookingsContext = createContext<BookingsContextType | undefined>(undefined);
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
 const FeedContext = createContext<FeedContextType | undefined>(undefined);
 
 // ─────────────────────────────────────────────────────────
@@ -302,37 +287,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return favorites.includes(id);
   }, [favorites]);
 
-  // ── Bookings state ──────────────────────────────────────
-  const [bookings, setBookings] = useState<Booking[]>([]);
-
-  const addBooking = useCallback((newBooking: Omit<Booking, 'id' | 'createdAt' | 'status'>) => {
-    const booking: Booking = {
-      ...newBooking,
-      id: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-    setBookings(prev => [booking, ...prev]);
-  }, []);
-
-  // ── App Catalog data state (for selling & registering) ───
-  const [artworks, setArtworks] = useState<Artwork[]>(INITIAL_ARTWORKS);
-  const [performers, setPerformers] = useState<Performer[]>(INITIAL_PERFORMERS);
-
-  const addArtwork = useCallback((newArt: Omit<Artwork, 'id'>) => {
-    setArtworks(prev => {
-      const nextId = prev.length > 0 ? Math.max(...prev.map(a => a.id)) + 1 : 1;
-      return [{ id: nextId, ...newArt }, ...prev];
-    });
-  }, []);
-
-  const addPerformer = useCallback((newPerf: Omit<Performer, 'id'>) => {
-    setPerformers(prev => {
-      const nextId = prev.length > 0 ? Math.max(...prev.map(p => p.id)) + 1 : 1;
-      return [{ id: nextId, ...newPerf }, ...prev];
-    });
-  }, []);
-
   // ── Feed state ──────────────────────────────────────────
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
   const [trendingPosts, setTrendingPosts] = useState<FeedPost[]>([]);
@@ -471,9 +425,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [cart, addToCart, updateQuantity, removeFromCart, clearCart, refreshCart, cartTotal, cartCount, cartLoading],
   );
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
-  const bookingsValue = useMemo(() => ({ bookings, addBooking }), [bookings, addBooking]);
   const userValue = useMemo(() => ({ user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession }), [user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession]);
-  const appDataValue = useMemo(() => ({ artworks, performers, addArtwork, addPerformer }), [artworks, performers, addArtwork, addPerformer]);
   const feedValue = useMemo(() => ({
     feedPosts, trendingPosts, followingPosts, feedLoading, feedError,
     fetchPersonalisedFeed, fetchTrendingFeed, fetchFollowingFeed,
@@ -486,17 +438,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <UserContext.Provider value={userValue}>
-      <AppDataContext.Provider value={appDataValue}>
         <FeedContext.Provider value={feedValue}>
-          <BookingsContext.Provider value={bookingsValue}>
             <FavoritesContext.Provider value={favoritesValue}>
               <CartContext.Provider value={cartValue}>
                 {children}
               </CartContext.Provider>
             </FavoritesContext.Provider>
-          </BookingsContext.Provider>
         </FeedContext.Provider>
-      </AppDataContext.Provider>
     </UserContext.Provider>
   );
 };
@@ -520,18 +468,6 @@ export const useCart = () => {
 export const useFavorites = () => {
   const context = useContext(FavoritesContext);
   if (!context) throw new Error('useFavorites must be used within an AppProvider');
-  return context;
-};
-
-export const useBookings = () => {
-  const context = useContext(BookingsContext);
-  if (!context) throw new Error('useBookings must be used within an AppProvider');
-  return context;
-};
-
-export const useAppData = () => {
-  const context = useContext(AppDataContext);
-  if (!context) throw new Error('useAppData must be used within an AppProvider');
   return context;
 };
 
