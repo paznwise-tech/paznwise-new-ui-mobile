@@ -36,20 +36,63 @@ export default function ProductDetail() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [avgRating, setAvgRating] = useState(0);
   const [reviewCount, setReviewCount] = useState(0);
+  const [distribution, setDistribution] = useState<Record<number, number>>({});
+  const [canReview, setCanReview] = useState(false);
+  const [helpfulIds, setHelpfulIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!product?.sellerId) return;
     UserService.getProfileById(product.sellerId).then(setSeller).catch(() => {});
   }, [product?.sellerId]);
 
-  useEffect(() => {
+  const loadReviews = useCallback(() => {
     if (!id) return;
-    ReviewService.getProductReviews(id).then(({ reviews: r, avgRating: avg, count }) => {
+    ReviewService.getProductReviews(id).then(({ reviews: r, avgRating: avg, count, distribution: dist }) => {
       setReviews(r);
       setAvgRating(avg);
       setReviewCount(count);
+      setDistribution(dist);
     });
   }, [id]);
+
+  useEffect(() => { loadReviews(); }, [loadReviews]);
+
+  // Eligibility is decided server-side (it checks the buyer actually
+  // received the item), so the write entry only appears when it says yes.
+  useEffect(() => {
+    if (!id || status !== 'signedIn') { setCanReview(false); return; }
+    ReviewService.canReview(String(id)).then(setCanReview);
+  }, [id, status]);
+
+  const handleHelpful = useCallback(async (reviewId: string) => {
+    if (helpfulIds.includes(reviewId)) return;
+    setHelpfulIds(prev => [...prev, reviewId]);
+    setReviews(prev => prev.map(r => (r.id === reviewId ? { ...r, helpful: (r.helpful ?? 0) + 1 } : r)));
+    try {
+      await ReviewService.markHelpful(reviewId);
+    } catch {
+      setHelpfulIds(prev => prev.filter(x => x !== reviewId));
+      setReviews(prev => prev.map(r => (r.id === reviewId ? { ...r, helpful: Math.max(0, (r.helpful ?? 1) - 1) } : r)));
+    }
+  }, [helpfulIds]);
+
+  const handleReport = useCallback((reviewId: string) => {
+    Alert.alert('Report review', 'Tell us what is wrong with this review.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Spam', onPress: () => submitReport(reviewId, 'Spam') },
+      { text: 'Offensive', onPress: () => submitReport(reviewId, 'Offensive content') },
+      { text: 'Not about this product', onPress: () => submitReport(reviewId, 'Irrelevant') },
+    ]);
+  }, []);
+
+  const submitReport = async (reviewId: string, reason: string) => {
+    try {
+      await ReviewService.reportReview(reviewId, reason);
+      Alert.alert('Reported', 'Thanks — our team will take a look.');
+    } catch (e: any) {
+      Alert.alert('Could not report', e?.message ?? 'Please try again.');
+    }
+  };
 
   const liked = product ? isFavorite(Number(product.id)) : false;
   const inCart = product ? cart.some(c => c.productId === String(product.id)) : false;
@@ -295,10 +338,43 @@ export default function ProductDetail() {
                 )}
               </View>
 
+              {/* Rating distribution */}
+              {reviewCount > 0 && (
+                <View style={styles.distribution}>
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const n = distribution[star] ?? 0;
+                    const pct = reviewCount > 0 ? (n / reviewCount) * 100 : 0;
+                    return (
+                      <View key={star} style={styles.distRow}>
+                        <Text style={styles.distStar}>{star}★</Text>
+                        <View style={styles.distTrack}>
+                          <View style={[styles.distFill, { width: `${pct}%` }]} />
+                        </View>
+                        <Text style={styles.distCount}>{n}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {canReview && (
+                <TouchableOpacity
+                  style={styles.writeReviewBtn}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/reviews/write',
+                      params: { productId: String(product.id), productTitle: product.title },
+                    } as any)
+                  }
+                >
+                  <Text style={styles.writeReviewText}>✍️  Write a review</Text>
+                </TouchableOpacity>
+              )}
+
               {reviews.length === 0 ? (
                 <Text style={styles.noReviews}>No reviews yet. Be the first to review!</Text>
               ) : (
-                reviews.slice(0, 3).map(r => (
+                reviews.slice(0, 5).map(r => (
                   <View key={r.id} style={styles.reviewCard}>
                     <View style={styles.reviewTop}>
                       <StarRow rating={r.rating} count={0} />
@@ -307,6 +383,19 @@ export default function ProductDetail() {
                       </Text>
                     </View>
                     <Text style={styles.reviewComment}>{r.comment}</Text>
+                    <View style={styles.reviewActions}>
+                      <TouchableOpacity
+                        onPress={() => handleHelpful(r.id)}
+                        disabled={helpfulIds.includes(r.id)}
+                      >
+                        <Text style={[styles.reviewAction, helpfulIds.includes(r.id) && { color: Colors.gold }]}>
+                          👍 Helpful{r.helpful ? ` (${r.helpful})` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleReport(r.id)}>
+                        <Text style={styles.reviewAction}>Report</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))
               )}
@@ -473,6 +562,19 @@ const styles = StyleSheet.create({
   tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
   tagBadge: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border },
   tagText: { ...Typography.caption, color: Colors.cream },
+  distribution: { gap: 4, marginBottom: Spacing.md },
+  distRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  distStar: { ...Typography.caption, fontSize: 11, width: 22 },
+  distTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: Colors.border, overflow: 'hidden' },
+  distFill: { height: 6, borderRadius: 3, backgroundColor: Colors.gold },
+  distCount: { ...Typography.caption, fontSize: 11, width: 24, textAlign: 'right' },
+  writeReviewBtn: {
+    borderWidth: 1, borderColor: Colors.gold + '66', borderRadius: Radius.md,
+    paddingVertical: Spacing.sm, alignItems: 'center', marginBottom: Spacing.md,
+  },
+  writeReviewText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
+  reviewActions: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.sm },
+  reviewAction: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
   reviewsHeader: { marginTop: Spacing.lg, marginBottom: Spacing.sm },
   reviewsTitle: { ...Typography.heading, fontSize: 18, marginBottom: Spacing.xs },
   reviewsSummary: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },

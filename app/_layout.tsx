@@ -112,6 +112,7 @@ function RootNavigator() {
             <Stack.Screen name="favorites/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="coupons/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="reviews/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="reviews/write" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="rentals/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="notifications/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="settings/index" options={{ animation: 'slide_from_right' }} />
