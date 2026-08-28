@@ -5,7 +5,9 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "check:routes": "node scripts/check-routes.mjs",
+    "check": "tsc --noEmit && node scripts/check-routes.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/cormorant-garamond": "^0.2.3",

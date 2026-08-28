@@ -128,16 +128,14 @@ export const AuthService = {
     return res.data;
   },
 
-  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    await fetchApi<any>('/auth/change-password', {
-      method: 'POST',
-      requiresAuth: true,
-      body: JSON.stringify({ currentPassword, newPassword }),
-    });
-  },
-
+  /**
+   * Deletes the signed-in user's account.
+   *
+   * `DELETE /users/me` does not exist — the account lives behind the
+   * profile resource.
+   */
   async deleteAccount(): Promise<void> {
-    await fetchApi<any>('/users/me', {
+    await fetchApi<any>('/user/profile', {
       method: 'DELETE',
       requiresAuth: true,
     });

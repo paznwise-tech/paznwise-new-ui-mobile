@@ -31,34 +31,49 @@ function SettingRow({
 }
 
 export default function Settings() {
-  const { logout } = useUser();
+  const { user, logout } = useUser();
   const [pushEnabled, setPushEnabled]     = useState(true);
   const [emailEnabled, setEmailEnabled]   = useState(true);
   const [orderNotifs, setOrderNotifs]     = useState(true);
   const [bookingNotifs, setBookingNotifs] = useState(true);
   const [followNotifs, setFollowNotifs]   = useState(true);
 
-  const [changingPwd, setChangingPwd]     = useState(false);
-  const [currentPwd, setCurrentPwd]       = useState('');
-  const [newPwd, setNewPwd]               = useState('');
-  const [confirmPwd, setConfirmPwd]       = useState('');
   const [pwdLoading, setPwdLoading]       = useState(false);
 
-  const handleChangePassword = useCallback(async () => {
-    if (!currentPwd || !newPwd) { Alert.alert('Error', 'Please fill in all fields'); return; }
-    if (newPwd !== confirmPwd) { Alert.alert('Error', 'New passwords do not match'); return; }
-    if (newPwd.length < 8) { Alert.alert('Error', 'Password must be at least 8 characters'); return; }
-    setPwdLoading(true);
-    try {
-      await AuthService.changePassword(currentPwd, newPwd);
-      Alert.alert('Success', 'Password changed successfully');
-      setChangingPwd(false); setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
-    } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Failed to change password');
-    } finally {
-      setPwdLoading(false);
+  /**
+   * The API has no change-password endpoint — only forgot-password and
+   * reset-password, which work by emailed link. The screen previously
+   * collected the current and new password and posted them to
+   * /auth/change-password, which does not exist, so every attempt failed
+   * with a network error after the user had typed their credentials.
+   */
+  const handleResetPassword = useCallback(() => {
+    if (!user.email) {
+      Alert.alert('No email on file', 'Add an email address to your profile to reset your password.');
+      return;
     }
-  }, [currentPwd, newPwd, confirmPwd]);
+    Alert.alert(
+      'Reset password',
+      `We'll email a reset link to ${user.email}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send link',
+          onPress: async () => {
+            setPwdLoading(true);
+            try {
+              await AuthService.forgotPassword(user.email);
+              Alert.alert('Check your email', 'We have sent you a link to reset your password.');
+            } catch (e: any) {
+              Alert.alert('Could not send link', e?.message ?? 'Please try again.');
+            } finally {
+              setPwdLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [user.email]);
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -146,45 +161,10 @@ export default function Settings() {
         <SectionHeader title="Account" />
         <View style={styles.card}>
           <SettingRow
-            icon="🔒" label="Change Password"
-            sublabel="Update your login credentials"
-            onPress={() => setChangingPwd(v => !v)}
+            icon="🔒" label="Reset Password"
+            sublabel={pwdLoading ? 'Sending…' : 'We email you a secure reset link'}
+            onPress={handleResetPassword}
           />
-          {changingPwd && (
-            <View style={styles.pwdForm}>
-              <TextInput
-                style={styles.pwdInput}
-                placeholder="Current password"
-                placeholderTextColor={Colors.creamFaint}
-                secureTextEntry value={currentPwd}
-                onChangeText={setCurrentPwd}
-              />
-              <TextInput
-                style={styles.pwdInput}
-                placeholder="New password"
-                placeholderTextColor={Colors.creamFaint}
-                secureTextEntry value={newPwd}
-                onChangeText={setNewPwd}
-              />
-              <TextInput
-                style={styles.pwdInput}
-                placeholder="Confirm new password"
-                placeholderTextColor={Colors.creamFaint}
-                secureTextEntry value={confirmPwd}
-                onChangeText={setConfirmPwd}
-              />
-              <TouchableOpacity
-                style={styles.pwdBtn}
-                onPress={handleChangePassword}
-                disabled={pwdLoading}
-              >
-                {pwdLoading
-                  ? <ActivityIndicator color={Colors.bg} size="small" />
-                  : <Text style={styles.pwdBtnText}>Update Password</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
 
         {/* Support */}
@@ -250,16 +230,6 @@ const styles = StyleSheet.create({
   rowSublabel: { ...Typography.caption, fontSize: 12, marginTop: 1 },
   rowChevron: { color: Colors.creamDim, fontSize: 22 },
   rowDivider: { height: 1, backgroundColor: Colors.border, marginLeft: 68 },
-  pwdForm: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, gap: Spacing.sm },
-  pwdInput: {
-    backgroundColor: Colors.bgInput, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: Radius.md, padding: Spacing.md, ...Typography.body, fontSize: 14, color: Colors.cream,
-  },
-  pwdBtn: {
-    backgroundColor: Colors.gold, borderRadius: Radius.full,
-    padding: Spacing.md, alignItems: 'center',
-  },
-  pwdBtnText: { ...Typography.bodyBold, fontSize: 14, color: Colors.bg },
   signOutRow: { padding: Spacing.md, alignItems: 'center' },
   signOutText: { ...Typography.bodySemibold, fontSize: 15, color: Colors.gold },
   deleteRow: { padding: Spacing.md, alignItems: 'center' },
