@@ -1,56 +1,40 @@
 import { useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
+import { FaqService } from '@/services/cmsService';
 
-interface FAQ {
-  id: string;
-  category: string;
-  question: string;
-  answer: string;
-}
-
-const FAQS: FAQ[] = [
-  // Buying
-  { id: '1', category: 'Buying', question: 'How do I purchase artwork?', answer: 'Browse the marketplace, add items to your cart, and complete checkout. We accept Cash on Delivery and various online payment methods.' },
-  { id: '2', category: 'Buying', question: 'Is the artwork authentic?', answer: 'All artworks on Paznwise are verified by our team. Each piece comes with a certificate of authenticity from the artist.' },
-  { id: '3', category: 'Buying', question: 'What is your return policy?', answer: 'You can return artwork within 7 days of delivery if it arrives damaged or significantly differs from the listing. Contact our support team to initiate a return.' },
-  { id: '4', category: 'Buying', question: 'How long does delivery take?', answer: 'Standard delivery takes 5–10 business days across India. For fragile or large pieces, we use specialist art handlers.' },
-  // Hiring
-  { id: '5', category: 'Hiring', question: 'How do I hire a performer?', answer: 'Go to the Hire tab, browse performers by category, and tap on one to create a booking request. Fill in your event details and submit.' },
-  { id: '6', category: 'Hiring', question: 'How is pricing determined for performers?', answer: 'Performers set their own base rates. The final price includes the artist fee, travel & hospitality, and a 10% platform fee.' },
-  { id: '7', category: 'Hiring', question: 'Can I cancel a booking?', answer: 'Bookings can be cancelled up to 48 hours before the event. Cancellations within 48 hours may be subject to a fee. Check the cancellation policy when booking.' },
-  // Events
-  { id: '8', category: 'Events', question: 'How do I register for an event?', answer: 'Tap on any event card, review the details, select your ticket type, and tap "Get Tickets". Your ticket will be saved under My Tickets.' },
-  { id: '9', category: 'Events', question: 'Are event tickets refundable?', answer: 'This depends on the organizer\'s policy, which is shown on the event detail page. Some events offer full refunds up to 24 hours before the event.' },
-  // Account
-  { id: '10', category: 'Account', question: 'How do I change my password?', answer: 'Go to Settings → Change Password. You\'ll need your current password to set a new one.' },
-  { id: '11', category: 'Account', question: 'How do I become a verified artist?', answer: 'Go to your Profile and tap "Register as Artist". Our team will review your portfolio and verify your account within 3–5 business days.' },
-  { id: '12', category: 'Account', question: 'How do I sell my artwork?', answer: 'Complete seller setup in Settings, then go to your Profile → My Listings → Create Listing. Set your price, upload photos, and publish.' },
-  // Payments
-  { id: '13', category: 'Payments', question: 'What payment methods are accepted?', answer: 'We accept Cash on Delivery, UPI, credit/debit cards, and net banking for most transactions.' },
-  { id: '14', category: 'Payments', question: 'When do sellers receive payment?', answer: 'Seller payouts are processed within 7 business days after the buyer confirms delivery.' },
-];
-
-const CATEGORIES = ['All', ...Array.from(new Set(FAQS.map(f => f.category)))];
-
+/**
+ * Help centre.
+ *
+ * FAQs come from the admin-managed `/faqs` endpoint, so support content is
+ * edited in one place and stays in step with the web app rather than being
+ * shipped inside the bundle and going stale on its own schedule.
+ *
+ * The API's Faq model has no category field, so there are no category pills
+ * — search covers both question and answer instead.
+ */
 export default function HelpCenter() {
-  const [searchQ, setSearchQ]     = useState('');
-  const [activeCat, setActiveCat] = useState('All');
-  const [expanded, setExpanded]   = useState<string | null>(null);
+  const [searchQ, setSearchQ]   = useState('');
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  const { data: faqs = [], isLoading, error } = useQuery({
+    queryKey: ['faqs'],
+    queryFn: FaqService.getFaqs,
+    staleTime: 30 * 60_000,
+  });
 
   const filtered = useMemo(() => {
-    let list = FAQS;
-    if (activeCat !== 'All') list = list.filter(f => f.category === activeCat);
-    if (searchQ.trim()) {
-      const q = searchQ.toLowerCase();
-      list = list.filter(f => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q));
-    }
-    return list;
-  }, [searchQ, activeCat]);
+    const q = searchQ.trim().toLowerCase();
+    if (!q) return faqs;
+    return faqs.filter(
+      f => f.question.toLowerCase().includes(q) || f.answer.toLowerCase().includes(q),
+    );
+  }, [searchQ, faqs]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -75,28 +59,23 @@ export default function HelpCenter() {
           />
         </View>
 
-        {/* Category pills */}
-        <ScrollView
-          horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.catList}
-        >
-          {CATEGORIES.map(cat => (
-            <TouchableOpacity
-              key={cat}
-              style={[styles.catChip, activeCat === cat && styles.catChipActive]}
-              onPress={() => setActiveCat(cat)}
-            >
-              <Text style={[styles.catText, activeCat === cat && styles.catTextActive]}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       </SafeAreaView>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
+            <ActivityIndicator color={Colors.gold} />
+          </View>
+        ) : error ? (
+          <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
+            <Text style={styles.noResultText}>Could not load help articles.</Text>
+          </View>
+        ) : filtered.length === 0 ? (
           <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
             <Text style={{ fontSize: 36 }}>🤔</Text>
-            <Text style={styles.noResultText}>No results found</Text>
+            <Text style={styles.noResultText}>
+              {searchQ.trim() ? 'No results found' : 'No help articles yet'}
+            </Text>
           </View>
         ) : (
           filtered.map(faq => {

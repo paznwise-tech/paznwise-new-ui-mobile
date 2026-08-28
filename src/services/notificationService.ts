@@ -30,21 +30,21 @@ function normalizeNotification(n: any): AppNotification {
 
 export const NotificationService = {
   async getNotifications(): Promise<AppNotification[]> {
-    const res = await fetchApi<any>('/api/notifications', { requiresAuth: true });
+    const res = await fetchApi<any>('/notifications', { requiresAuth: true });
     const data = res.data ?? res;
     if (Array.isArray(data)) return data.map(normalizeNotification);
     return (data?.notifications ?? data?.items ?? []).map(normalizeNotification);
   },
 
   async markAsRead(id: string): Promise<void> {
-    await fetchApi<any>(`/api/notifications/${id}/read`, {
+    await fetchApi<any>(`/notifications/${id}/read`, {
       method: 'PATCH',
       requiresAuth: true,
     }).catch(() => {});
   },
 
   async markAllAsRead(): Promise<void> {
-    await fetchApi<any>('/api/notifications/read-all', {
+    await fetchApi<any>('/notifications/read-all', {
       method: 'PATCH',
       requiresAuth: true,
     }).catch(() => {});
@@ -52,67 +52,10 @@ export const NotificationService = {
 
   async getUnreadCount(): Promise<number> {
     try {
-      const res = await fetchApi<any>('/api/notifications/unread-count', { requiresAuth: true });
+      const res = await fetchApi<any>('/notifications/unread-count', { requiresAuth: true });
       return res.data?.count ?? res.count ?? 0;
     } catch {
       return 0;
     }
-import type { ApiResponse } from '../types';
-
-export interface NotificationItem {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  isRead: boolean;
-  actionUrl?: string;
-  createdAt: string;
-}
-
-export const notificationService = {
-  /**
-   * Get user notifications list
-   */
-  async getNotifications(): Promise<NotificationItem[]> {
-    const res = await fetchApi<ApiResponse<NotificationItem[]> | NotificationItem[]>('/notifications', {
-      requiresAuth: true,
-    });
-    if (Array.isArray(res)) return res;
-    return res.data || [];
-  },
-
-  /**
-   * Get unread notification count
-   */
-  async getUnreadCount(): Promise<number> {
-    try {
-      const res = await fetchApi<ApiResponse<{ count: number }> | { count: number }>('/notifications/unread-count', {
-        requiresAuth: true,
-      });
-      if ('data' in res && res.data) return res.data.count || 0;
-      return (res as any).count || 0;
-    } catch {
-      return 0;
-    }
-  },
-
-  /**
-   * Mark notification as read
-   */
-  async markAsRead(id: string): Promise<void> {
-    await fetchApi(`/notifications/${id}/read`, {
-      method: 'PUT',
-      requiresAuth: true,
-    });
-  },
-
-  /**
-   * Mark all notifications as read
-   */
-  async markAllAsRead(): Promise<void> {
-    await fetchApi('/notifications/read-all', {
-      method: 'PUT',
-      requiresAuth: true,
-    });
   },
 };

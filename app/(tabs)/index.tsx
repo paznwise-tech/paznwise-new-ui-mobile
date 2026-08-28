@@ -9,7 +9,10 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import ProductCard from '@/components/product/ProductCard';
 import { PerformerCard } from '@/components/artist/PerformerCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { HERO_SLIDES, CATEGORIES } from '@/constants/data';
+import { BrandLogo } from '@/components/ui/BrandLogo';
+import { NotificationBell } from '@/components/ui/NotificationBell';
+import { useCategories, useHeroSlides } from '@/hooks/useTaxonomy';
+import type { HeroSlide, Category } from '@/services/taxonomyService';
 import { useCart, useUser, useFeed } from '@/context/AppContext';
 import { Performer } from '@/types';
 import { FeedPost } from '@/services/feedService';
@@ -19,8 +22,9 @@ const { width } = Dimensions.get('window');
 
 function HeroSlider() {
   const [active, setActive] = useState(0);
+  const { data: slides = [], isLoading } = useHeroSlides();
 
-  const renderHeroItem = useCallback(({ item }: { item: typeof HERO_SLIDES[0] }) => (
+  const renderHeroItem = useCallback(({ item }: { item: HeroSlide }) => (
     <View style={{ width }}>
       <Image source={{ uri: item.img }} style={styles.heroImg} contentFit="cover" transition={400} />
       <LinearGradient colors={['rgba(13,27,42,0.1)', 'rgba(13,27,42,0.7)', Colors.bg]} locations={[0, 0.6, 1]} style={styles.heroOverlay} />
@@ -28,7 +32,14 @@ function HeroSlider() {
         <Text style={styles.heroEyebrow}>Featured Collection</Text>
         <Text style={styles.heroTitle}>{item.title}</Text>
         <Text style={styles.heroCaption}>{item.caption}</Text>
-        <TouchableOpacity style={styles.heroBtn} onPress={() => router.push('/(tabs)/browse')}>
+        <TouchableOpacity
+          style={styles.heroBtn}
+          onPress={() =>
+            item.targetSlug
+              ? router.push(`/product/category/${item.targetSlug}` as any)
+              : router.push('/(tabs)/browse')
+          }
+        >
           <Text style={styles.heroBtnText}>Explore →</Text>
         </TouchableOpacity>
       </View>
@@ -39,23 +50,34 @@ function HeroSlider() {
     setActive(Math.round(e.nativeEvent.contentOffset.x / width));
   }, []);
 
+  // The carousel is promotional, so an empty or failed fetch collapses it
+  // rather than leaving a blank band at the top of the screen.
+  if (isLoading) {
+    return (
+      <View style={[styles.hero, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={Colors.gold} />
+      </View>
+    );
+  }
+  if (slides.length === 0) return null;
+
   return (
     <View style={styles.hero}>
       <FlatList
-        data={HERO_SLIDES}
+        data={slides}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        keyExtractor={i => String(i.id)}
+        keyExtractor={i => i.id}
         renderItem={renderHeroItem}
         initialNumToRender={1}
         maxToRenderPerBatch={1}
         windowSize={2}
       />
       <View style={styles.heroDots}>
-        {HERO_SLIDES.map((_, i) => (
+        {slides.map((_, i) => (
           <View key={i} style={[styles.dot, active === i && styles.dotActive]} />
         ))}
       </View>
@@ -64,24 +86,32 @@ function HeroSlider() {
 }
 
 function CategoryBar() {
-  const [active, setActive] = useState('All');
+  const { categories } = useCategories();
 
-  const renderCatItem = useCallback(({ item }: { item: typeof CATEGORIES[0] }) => (
+  // These chips used to only restyle themselves. They now navigate, which is
+  // the only reason a category filter exists on a home screen.
+  const renderCatItem = useCallback(({ item }: { item: Category }) => (
     <TouchableOpacity
-      onPress={() => setActive(item.label)}
-      style={[styles.catChip, active === item.label && { borderColor: item.color, backgroundColor: item.color + '22' }]}
+      onPress={() =>
+        item.slug
+          ? router.push(`/product/category/${item.slug}` as any)
+          : router.push('/(tabs)/browse')
+      }
+      style={[styles.catChip, { borderColor: item.color + '66' }]}
     >
-      <Text style={[styles.catText, active === item.label && { color: item.color }]}>{item.label}</Text>
+      <Text style={[styles.catText, { color: item.color }]}>{item.label}</Text>
     </TouchableOpacity>
-  ), [active]);
+  ), []);
+
+  if (categories.length <= 1) return null;
 
   return (
     <FlatList
-      data={CATEGORIES}
+      data={categories}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.catList}
-      keyExtractor={i => i.label}
+      keyExtractor={i => i.id}
       renderItem={renderCatItem}
       initialNumToRender={7}
     />
@@ -91,7 +121,7 @@ function CategoryBar() {
 export default function Home() {
   const [performers, setPerformers] = useState<Array<Performer & { serviceId: string }>>([]);
   const [performersLoading, setPerformersLoading] = useState(true);
-  const { cart } = useCart();
+  const { cartCount } = useCart();
   const { user } = useUser();
   const { feedPosts, trendingPosts, feedLoading, feedError, fetchPersonalisedFeed, fetchTrendingFeed, togglePostLike, likePost } = useFeed();
 
@@ -244,14 +274,15 @@ export default function Home() {
             <BrandLogo size={28} />
           </View>
           <View style={styles.headerRight}>
+            <NotificationBell />
             <TouchableOpacity style={styles.searchBtn} onPress={() => router.push('/(tabs)/browse')}>
               <Text style={styles.searchIcon}>🔍</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cartBtn} onPress={() => router.push('/product/cart' as any)}>
               <Text style={styles.cartIcon}>🛒</Text>
-              {cart.length > 0 && (
+              {cartCount > 0 && (
                 <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>{cart.length}</Text>
+                  <Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : cartCount}</Text>
                 </View>
               )}
             </TouchableOpacity>

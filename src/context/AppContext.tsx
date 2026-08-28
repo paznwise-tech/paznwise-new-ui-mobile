@@ -1,23 +1,42 @@
 import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
-import { Artwork, Performer, CartItem, Booking, UserProfile } from '@/types';
-import { ARTWORKS as INITIAL_ARTWORKS, PERFORMERS as INITIAL_PERFORMERS } from '@/constants/data';
+import { UserProfile } from '@/types';
 import { FeedService, FeedPost, CreatePostData, UpdatePostData, InteractData } from '@/services/feedService';
 import { AuthStorage } from '@/services/authStorage';
 import { UserService } from '@/services/userService';
-import { WishlistService } from '@/services/wishlistService';
+import { FavoritesService } from '@/services/favoritesService';
 import { connectSocket, disconnectSocket } from '@/services/socket';
 import { clearAuthUserIdCache } from '@/services/currentUser';
+import { authEvents } from '@/api/authEvents';
+import type { CartLine } from '@/services/cartService';
+import {
+  useCart as useCartQuery,
+  useAddToCart,
+  useUpdateCartQuantity,
+  useRemoveCartItem,
+  useClearCart,
+  useRefreshCart,
+  cartTotal as calcCartTotal,
+  cartCount as calcCartCount,
+} from '@/hooks/useCartQueries';
 
 // ─────────────────────────────────────────────────────────
 // Context Type Definitions
 // ─────────────────────────────────────────────────────────
 
 interface CartContextType {
-  cart: CartItem[];
-  addToCart: (item: Artwork) => void;
-  removeFromCart: (id: number) => void;
-  clearCart: () => void;
+  cart: CartLine[];
+  /** Adds to whatever quantity is already there. */
+  addToCart: (productId: string | number, quantity?: number) => Promise<unknown>;
+  /** Sets an absolute quantity; anything below 1 removes the line. */
+  updateQuantity: (itemId: string, quantity: number) => Promise<unknown>;
+  removeFromCart: (itemId: string) => Promise<unknown>;
+  clearCart: () => Promise<unknown>;
+  /** Re-reads the cart after the server changed it, e.g. on order placement. */
+  refreshCart: () => Promise<unknown>;
   cartTotal: number;
+  /** Sum of quantities, for the badge — not the number of lines. */
+  cartCount: number;
+  cartLoading: boolean;
 }
 
 interface FavoritesContextType {
@@ -26,13 +45,19 @@ interface FavoritesContextType {
   isFavorite: (id: number) => boolean;
 }
 
-interface BookingsContextType {
-  bookings: Booking[];
-  addBooking: (booking: Omit<Booking, 'id' | 'createdAt' | 'status'>) => void;
-}
+/**
+ * Session lifecycle.
+ *
+ * `loading` is the boot window while a stored token is validated — the
+ * root layout holds the splash over it, and route guards must not act
+ * until it resolves or a returning user is bounced to the auth stack
+ * before their session is known.
+ */
+export type SessionStatus = 'loading' | 'signedIn' | 'signedOut';
 
 interface UserContextType {
   user: UserProfile & { isLoggedIn: boolean };
+  status: SessionStatus;
   updateUserProfile: (profile: Partial<UserProfile>) => void;
   deleteProfile: () => void;
   followUser: (id: string) => void;
@@ -42,13 +67,7 @@ interface UserContextType {
   loadProfile: () => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => void;
-}
-
-interface AppDataContextType {
-  artworks: Artwork[];
-  performers: Performer[];
-  addArtwork: (artwork: Omit<Artwork, 'id'>) => void;
-  addPerformer: (performer: Omit<Performer, 'id'>) => void;
+  switchRole: (role: 'BUYER' | 'ARTIST' | 'ORGANIZER') => Promise<void>;
 }
 
 interface FeedContextType {
@@ -74,9 +93,7 @@ interface FeedContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
-const BookingsContext = createContext<BookingsContextType | undefined>(undefined);
 const UserContext = createContext<UserContextType | undefined>(undefined);
-const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
 const FeedContext = createContext<FeedContextType | undefined>(undefined);
 
 // ─────────────────────────────────────────────────────────
@@ -102,16 +119,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isLoggedIn: false,
   });
 
+  const [status, setStatus] = useState<SessionStatus>('loading');
+
   const updateUserProfile = useCallback((profile: Partial<UserProfile>) => {
     setUser(prev => ({ ...prev, ...profile }));
   }, []);
 
   const login = useCallback((name: string, email: string) => {
     setUser(prev => ({ ...prev, name, email, isLoggedIn: true }));
+    setStatus('signedIn');
   }, []);
 
   const loginWithProfile = useCallback((profile: Partial<UserProfile>) => {
     setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+    setStatus('signedIn');
     connectSocket().catch(() => {}); // open real-time connection on fresh login
   }, []);
 
@@ -119,22 +140,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const profile = await UserService.getMyProfile();
       setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+      setStatus('signedIn');
       connectSocket().catch(() => {}); // open real-time connection once authenticated
-      // Sync wishlist from backend
-      WishlistService.getWishlist()
+      // Sync saved artworks from the backend
+      FavoritesService.getFavorites()
         .then(items => setFavorites(items.map(i => i.id)))
         .catch(() => {});
     } catch (e) {
       console.warn('[AppContext] loadProfile failed:', e);
+      throw e;
     }
   }, []);
 
-  // Restore session on app start if a stored token exists
+  /**
+   * Boot: a stored token is only a claim, so it is validated against the
+   * profile endpoint before the session counts as signed in. A 401 here
+   * has already been through the client's refresh attempt, so failure is
+   * final and the token is dropped.
+   */
   useEffect(() => {
-    AuthStorage.getAccessToken().then(token => {
-      if (token) loadProfile();
-    });
+    let cancelled = false;
+
+    AuthStorage.getAccessToken()
+      .then(async token => {
+        if (!token) return;
+        try {
+          await loadProfile();
+        } catch {
+          await AuthStorage.clearTokens();
+          clearAuthUserIdCache();
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStatus(prev => (prev === 'loading' ? 'signedOut' : prev));
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadProfile]);
+
+  /**
+   * A refresh that fails mid-session is reported by the HTTP client, which
+   * sits below React and cannot reach this state directly.
+   */
+  useEffect(
+    () =>
+      authEvents.on('signed-out', () => {
+        disconnectSocket();
+        setUser(prev => ({ ...prev, isLoggedIn: false }));
+        setStatus('signedOut');
+      }),
+    [],
+  );
 
   const deleteProfile = useCallback(() => {
     setUser(prev => ({ ...prev, isLoggedIn: false }));
@@ -151,6 +209,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = useCallback(async () => {
     try {
+      // Before the access token goes: unregistering needs it.
+      const { unregisterPush } = await import('@/push/registerDevice');
+      await unregisterPush();
+    } catch {
+      // Never block sign-out on this.
+    }
+    try {
       const refreshToken = await AuthStorage.getRefreshToken();
       if (refreshToken) {
         const { AuthService } = await import('@/services/authService');
@@ -161,36 +226,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clearAuthUserIdCache();
       await AuthStorage.clearTokens();
       setUser(prev => ({ ...prev, isLoggedIn: false }));
+      setStatus('signedOut');
     }
   }, []);
 
+  /** Re-reads the profile from the server, e.g. after a role switch. */
   const refreshSession = useCallback(() => {
-    // Mock refreshing token
-    console.log('Session refreshed');
-  }, []);
+    loadProfile().catch(() => {});
+  }, [loadProfile]);
 
-  // ── Cart state ──────────────────────────────────────────
-  const [cart, setCart] = useState<CartItem[]>([]);
+  /**
+   * Switches the active role.
+   *
+   * The server issues a new access token carrying the new role, so it is
+   * stored before anything else. The JWT subject is what the backend
+   * authorises messaging against, so its cache is cleared too — otherwise
+   * the app keeps identifying as the previous session.
+   */
+  const switchRole = useCallback(async (role: 'BUYER' | 'ARTIST' | 'ORGANIZER') => {
+    const { AuthService } = await import('@/services/authService');
+    const { accessToken } = await AuthService.switchRole(role);
+    await AuthStorage.setAccessToken(accessToken);
+    clearAuthUserIdCache();
+    await loadProfile();
+  }, [loadProfile]);
 
-  const addToCart = useCallback((item: Artwork) => {
-    setCart(prev => {
-      // Avoid duplicate cart additions
-      if (prev.some(cartItem => cartItem.id === item.id)) return prev;
-      return [...prev, { ...item, addedAt: new Date().toISOString() }];
-    });
-  }, []);
+  // ── Cart ────────────────────────────────────────────────
+  // Server-backed. The cart endpoints are behind `authenticate`, so it is
+  // only fetched once there is a session; a guest sees an empty cart and is
+  // sent to sign in when they try to add.
+  const { data: cartLines, isLoading: cartLoading } = useCartQuery(status === 'signedIn');
+  const addToCartMutation = useAddToCart();
+  const updateQuantityMutation = useUpdateCartQuantity();
+  const removeCartItemMutation = useRemoveCartItem();
+  const clearCartMutation = useClearCart();
+  const refreshCart = useRefreshCart();
 
-  const removeFromCart = useCallback((id: number) => {
-    setCart(prev => prev.filter(item => item.id !== id));
-  }, []);
+  const cart = useMemo(() => cartLines ?? [], [cartLines]);
 
-  const clearCart = useCallback(() => {
-    setCart([]);
-  }, []);
+  const addToCart = useCallback(
+    (productId: string | number, quantity = 1) =>
+      addToCartMutation.mutateAsync({ productId: String(productId), quantity }),
+    [addToCartMutation],
+  );
 
-  const cartTotal = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.price, 0);
-  }, [cart]);
+  const updateQuantity = useCallback(
+    (itemId: string, quantity: number) =>
+      quantity < 1
+        ? removeCartItemMutation.mutateAsync({ itemId })
+        : updateQuantityMutation.mutateAsync({ itemId, quantity }),
+    [updateQuantityMutation, removeCartItemMutation],
+  );
+
+  const removeFromCart = useCallback(
+    (itemId: string) => removeCartItemMutation.mutateAsync({ itemId }),
+    [removeCartItemMutation],
+  );
+
+  const clearCart = useCallback(() => clearCartMutation.mutateAsync(undefined), [clearCartMutation]);
+
+  const cartTotal = useMemo(() => calcCartTotal(cart), [cart]);
+  const cartCount = useMemo(() => calcCartCount(cart), [cart]);
 
   // ── Favorites state ─────────────────────────────────────
   const [favorites, setFavorites] = useState<number[]>([]);
@@ -198,12 +294,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const toggleFavorite = useCallback((id: number) => {
     setFavorites(prev => {
       if (prev.includes(id)) {
-        WishlistService.removeFromWishlist(String(id)).catch(() => {
+        FavoritesService.removeFavorite(id).catch(() => {
           setFavorites(curr => (curr.includes(id) ? curr : [...curr, id]));
         });
         return prev.filter(favId => favId !== id);
       } else {
-        WishlistService.addToWishlist(String(id)).catch(() => {
+        FavoritesService.addFavorite(id).catch(() => {
           setFavorites(curr => curr.filter(f => f !== id));
         });
         return [...prev, id];
@@ -214,37 +310,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const isFavorite = useCallback((id: number) => {
     return favorites.includes(id);
   }, [favorites]);
-
-  // ── Bookings state ──────────────────────────────────────
-  const [bookings, setBookings] = useState<Booking[]>([]);
-
-  const addBooking = useCallback((newBooking: Omit<Booking, 'id' | 'createdAt' | 'status'>) => {
-    const booking: Booking = {
-      ...newBooking,
-      id: `BK-${Math.floor(1000 + Math.random() * 9000)}`,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-    setBookings(prev => [booking, ...prev]);
-  }, []);
-
-  // ── App Catalog data state (for selling & registering) ───
-  const [artworks, setArtworks] = useState<Artwork[]>(INITIAL_ARTWORKS);
-  const [performers, setPerformers] = useState<Performer[]>(INITIAL_PERFORMERS);
-
-  const addArtwork = useCallback((newArt: Omit<Artwork, 'id'>) => {
-    setArtworks(prev => {
-      const nextId = prev.length > 0 ? Math.max(...prev.map(a => a.id)) + 1 : 1;
-      return [{ id: nextId, ...newArt }, ...prev];
-    });
-  }, []);
-
-  const addPerformer = useCallback((newPerf: Omit<Performer, 'id'>) => {
-    setPerformers(prev => {
-      const nextId = prev.length > 0 ? Math.max(...prev.map(p => p.id)) + 1 : 1;
-      return [{ id: nextId, ...newPerf }, ...prev];
-    });
-  }, []);
 
   // ── Feed state ──────────────────────────────────────────
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
@@ -379,11 +444,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [feedPosts, trendingPosts, followingPosts, applyLikeState]);
 
   // ── Memoized Context Values ─────────────────────────────
-  const cartValue = useMemo(() => ({ cart, addToCart, removeFromCart, clearCart, cartTotal }), [cart, addToCart, removeFromCart, clearCart, cartTotal]);
+  const cartValue = useMemo(
+    () => ({ cart, addToCart, updateQuantity, removeFromCart, clearCart, refreshCart, cartTotal, cartCount, cartLoading }),
+    [cart, addToCart, updateQuantity, removeFromCart, clearCart, refreshCart, cartTotal, cartCount, cartLoading],
+  );
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
-  const bookingsValue = useMemo(() => ({ bookings, addBooking }), [bookings, addBooking]);
-  const userValue = useMemo(() => ({ user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession }), [user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession]);
-  const appDataValue = useMemo(() => ({ artworks, performers, addArtwork, addPerformer }), [artworks, performers, addArtwork, addPerformer]);
+  const userValue = useMemo(() => ({ user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole }), [user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole]);
   const feedValue = useMemo(() => ({
     feedPosts, trendingPosts, followingPosts, feedLoading, feedError,
     fetchPersonalisedFeed, fetchTrendingFeed, fetchFollowingFeed,
@@ -396,17 +462,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <UserContext.Provider value={userValue}>
-      <AppDataContext.Provider value={appDataValue}>
         <FeedContext.Provider value={feedValue}>
-          <BookingsContext.Provider value={bookingsValue}>
             <FavoritesContext.Provider value={favoritesValue}>
               <CartContext.Provider value={cartValue}>
                 {children}
               </CartContext.Provider>
             </FavoritesContext.Provider>
-          </BookingsContext.Provider>
         </FeedContext.Provider>
-      </AppDataContext.Provider>
     </UserContext.Provider>
   );
 };
@@ -430,18 +492,6 @@ export const useCart = () => {
 export const useFavorites = () => {
   const context = useContext(FavoritesContext);
   if (!context) throw new Error('useFavorites must be used within an AppProvider');
-  return context;
-};
-
-export const useBookings = () => {
-  const context = useContext(BookingsContext);
-  if (!context) throw new Error('useBookings must be used within an AppProvider');
-  return context;
-};
-
-export const useAppData = () => {
-  const context = useContext(AppDataContext);
-  if (!context) throw new Error('useAppData must be used within an AppProvider');
   return context;
 };
 

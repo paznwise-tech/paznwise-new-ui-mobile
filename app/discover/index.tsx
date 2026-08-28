@@ -11,25 +11,33 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ArtCard } from '@/components/product/ArtCard';
 import { EventCard } from '@/components/events/EventCard';
 import { ProductService } from '@/services/productService';
+import { MEDIA_BASE_URL } from '@/services/api';
+import { useCategories } from '@/hooks/useTaxonomy';
 import { EventService } from '@/services/eventService';
 import { Artwork, Event } from '@/types';
 
 const { width } = Dimensions.get('window');
 
-const CATEGORIES = [
-  { label: 'Paintings', emoji: '🎨', color: '#C9A84C' },
-  { label: 'Sculpture', emoji: '🗿', color: '#8B7355' },
-  { label: 'Photography', emoji: '📷', color: '#4A7C9C' },
-  { label: 'Digital Art', emoji: '💻', color: '#6B4C9C' },
-  { label: 'Prints', emoji: '🖼️', color: '#4C7C4C' },
-  { label: 'Textile', emoji: '🧵', color: '#9C4C6B' },
-];
+// No icon per category exists on the API, so one is chosen by name with a
+// neutral fallback — the tiles are decorative, the labels are the data.
+const CATEGORY_EMOJI: Record<string, string> = {
+  paint: '🎨', sculpt: '🗿', photo: '📷', digital: '💻',
+  print: '🖼️', textile: '🧵', craft: '🪡', jewel: '💍',
+};
+
+function emojiFor(label: string): string {
+  const lower = label.toLowerCase();
+  for (const [needle, emoji] of Object.entries(CATEGORY_EMOJI)) {
+    if (lower.includes(needle)) return emoji;
+  }
+  return '🖌️';
+}
 
 function resolveProductImg(p: any): string {
   const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? '';
   if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=400';
   if (url.startsWith('http')) return url;
-  return `https://bucket-6ywfl4.s3.ap-south-1.amazonaws.com/${url}`;
+  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
 function normalizeArtwork(p: any): Artwork {
@@ -61,15 +69,18 @@ function SectionHeader({ title, subtitle, onSeeAll }: { title: string; subtitle?
 }
 
 export default function Discover() {
+  const { categories } = useCategories();
   const [newArrivals, setNewArrivals] = useState<Artwork[]>([]);
   const [featured, setFeatured]       = useState<Artwork[]>([]);
   const [events, setEvents]           = useState<Event[]>([]);
   const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
+    // These two rails used to issue the identical request, so "New Arrivals"
+    // and "Featured" showed the same items in the same order.
     Promise.allSettled([
-      ProductService.getMarketplaceProducts({ limit: 8 }),
-      ProductService.getMarketplaceProducts({ limit: 8 }),
+      ProductService.getMarketplaceProducts({ limit: 8, sort: 'newest' }),
+      ProductService.getMarketplaceProducts({ limit: 8, sort: 'popular' }),
       EventService.getEvents({ limit: 5 }),
     ]).then(([newRes, featuredRes, eventsRes]) => {
       if (newRes.status === 'fulfilled') {
@@ -131,17 +142,19 @@ export default function Discover() {
         {/* Browse by category */}
         <SectionHeader title="Browse by Category" />
         <View style={styles.catGrid}>
-          {CATEGORIES.map(cat => (
-            <TouchableOpacity
-              key={cat.label}
-              style={[styles.catCard, { borderColor: cat.color + '66' }]}
-              onPress={() => router.push(`/product/category/${cat.label.toLowerCase().replace(/\s+/g, '-')}` as any)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.catEmoji}>{cat.emoji}</Text>
-              <Text style={styles.catLabel}>{cat.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {categories
+            .filter(cat => cat.slug)
+            .map(cat => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.catCard, { borderColor: cat.color + '66' }]}
+                onPress={() => router.push(`/product/category/${cat.slug}` as any)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.catEmoji}>{emojiFor(cat.label)}</Text>
+                <Text style={styles.catLabel}>{cat.label}</Text>
+              </TouchableOpacity>
+            ))}
         </View>
 
         {/* New Arrivals */}

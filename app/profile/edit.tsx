@@ -79,8 +79,8 @@ export default function EditProfile() {
           try {
             await UserService.deleteMyProfile();
           } catch {}
+          // The root guard handles the redirect once the session flips.
           await logout();
-          router.replace('/(auth)/login');
         } },
       ]
     );

@@ -249,7 +249,10 @@ export interface UpdatePostData {
   tags?: string;
 }
 
-export type InteractAction = 'like' | 'unlike' | 'comment' | 'share' | 'view';
+// Mirrors the Joi enum in src/interact/interact.controller.js. `like` and
+// `save` are toggles server-side — there is no separate 'unlike', which the
+// previous type offered and the API would have rejected.
+export type InteractAction = 'like' | 'save' | 'share' | 'view' | 'purchase' | 'skip' | 'comment';
 
 export interface InteractData {
   postId: number;
@@ -260,13 +263,16 @@ export interface InteractResponse {
   success: boolean;
   isLiked?: boolean;
   likesCount?: number;
+  /** Returned for `save`, which the server treats as a toggle. */
+  isSaved?: boolean;
+  savesCount?: number;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const FeedService = {
   async getPersonalisedFeed(userId: string): Promise<FeedPost[]> {
-    const res = await fetchApi<ApiResponse<PersonalisedFeedResponse>>(`/api/feed/${userId}`, {
+    const res = await fetchApi<ApiResponse<PersonalisedFeedResponse>>(`/feed/${userId}`, {
       requiresAuth: true,
     });
     const items = res.data?.items;
@@ -286,7 +292,7 @@ export const FeedService = {
             userId?: string; username?: string | null; name?: string | null;
             avatar?: string | null; isVerified?: boolean;
             user?: { username?: string | null; name?: string | null; picture?: string | null; isVerified?: boolean };
-          }>>(`/api/user/profile/${id}`, { requiresAuth: false })
+          }>>(`/user/profile/${id}`, { requiresAuth: false })
             .then(r => ({ id, data: r.data }))
         )
       );
@@ -316,7 +322,7 @@ export const FeedService = {
   },
 
   async getTrendingFeed(): Promise<FeedPost[]> {
-    const res = await fetchApi<ApiResponse<TrendingItem[]>>('/api/feed/trend', {
+    const res = await fetchApi<ApiResponse<TrendingItem[]>>('/feed/trend', {
       requiresAuth: false,
     });
     const items = Array.isArray(res.data) ? res.data : [];
@@ -324,7 +330,7 @@ export const FeedService = {
   },
 
   async getFollowingFeed(): Promise<FeedPost[]> {
-    const res = await fetchApi<ApiResponse<FollowingFeedResponse>>('/api/feed/following', {
+    const res = await fetchApi<ApiResponse<FollowingFeedResponse>>('/feed/following', {
       requiresAuth: true,
     });
     const posts = res.data?.posts;
@@ -344,7 +350,7 @@ export const FeedService = {
     if (data.categoryId)  formData.append('categoryId', data.categoryId);
     if (data.style)       formData.append('style', data.style);
     if (data.tags)        formData.append('tags', data.tags);
-    const res = await fetchApi<ApiResponse<TrendingItem>>('/api/feed/post', {
+    const res = await fetchApi<ApiResponse<TrendingItem>>('/feed/post', {
       method: 'POST',
       body: formData,
       requiresAuth: true,
@@ -364,7 +370,7 @@ export const FeedService = {
     if (data.categoryId !== undefined)  formData.append('categoryId', data.categoryId);
     if (data.style !== undefined)       formData.append('style', data.style);
     if (data.tags !== undefined)        formData.append('tags', data.tags);
-    const res = await fetchApi<ApiResponse<TrendingItem>>(`/api/feed/post/${postId}`, {
+    const res = await fetchApi<ApiResponse<TrendingItem>>(`/feed/post/${postId}`, {
       method: 'PUT',
       body: formData,
       requiresAuth: true,
@@ -373,21 +379,21 @@ export const FeedService = {
   },
 
   async deletePost(postId: number): Promise<void> {
-    await fetchApi(`/api/feed/post/${postId}`, {
+    await fetchApi(`/feed/post/${postId}`, {
       method: 'DELETE',
       requiresAuth: true,
     });
   },
 
   async getPostById(postId: number): Promise<FeedPost> {
-    const res = await fetchApi<ApiResponse<TrendingItem>>(`/api/feed/post/${postId}`, {
+    const res = await fetchApi<ApiResponse<TrendingItem>>(`/feed/post/${postId}`, {
       requiresAuth: true,
     });
     return normalizeTrending(res.data);
   },
 
   async interact(data: InteractData): Promise<InteractResponse> {
-    return fetchApi<InteractResponse>('/api/interact', {
+    return fetchApi<InteractResponse>('/interact', {
       method: 'POST',
       body: JSON.stringify({ postId: data.postId, action: data.action }),
       requiresAuth: true,

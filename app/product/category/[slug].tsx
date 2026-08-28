@@ -8,15 +8,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ArtCard } from '@/components/product/ArtCard';
 import { ProductService } from '@/services/productService';
+import { MEDIA_BASE_URL } from '@/services/api';
+import { useCategoryBySlug } from '@/hooks/useTaxonomy';
 import { Artwork } from '@/types';
 
-const SORT_OPTIONS = ['Newest', 'Price: Low–High', 'Price: High–Low', 'Popular'];
+const SORT_OPTIONS = [
+  { label: 'Newest',          value: 'newest' },
+  { label: 'Price: Low–High', value: 'price-asc' },
+  { label: 'Price: High–Low', value: 'price-desc' },
+  { label: 'Popular',         value: 'popular' },
+  { label: 'Rating',          value: 'rating' },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
 function resolveProductImg(p: any): string {
   const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? '';
   if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=400';
   if (url.startsWith('http')) return url;
-  return `https://bucket-6ywfl4.s3.ap-south-1.amazonaws.com/${url}`;
+  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
 function normalizeArtwork(p: any): Artwork {
@@ -37,51 +47,58 @@ export default function CategoryPage() {
   const [artworks, setArtworks]     = useState<Artwork[]>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [sort, setSort]             = useState('Newest');
+  const [sort, setSort]             = useState<SortValue>('newest');
   const [cursor, setCursor]         = useState<string | undefined>(undefined);
   const [hasMore, setHasMore]       = useState(true);
 
-  const categoryName = slug
-    ? slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-    : 'Category';
+  // The slug is resolved to a real category id. This screen used to fetch the
+  // entire catalogue and keep whatever happened to contain the slug in its
+  // title or category name — so a category page showed unrelated products and
+  // missed most of its own.
+  const { data: category, isLoading: categoryLoading } = useCategoryBySlug(slug);
+  const categoryName =
+    category?.label ??
+    (slug ? slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Category');
 
   const load = useCallback(async (reset = true) => {
     try {
       const res = await ProductService.getMarketplaceProducts({
         limit: 20,
         cursor: reset ? undefined : cursor,
+        categoryId: category?.id,
+        sort,
       }) as any;
       const list: any[] = Array.isArray(res.data)
         ? res.data
         : (res.data?.products ?? res.data?.items ?? []);
-      const normalized = list.map(normalizeArtwork).filter(a =>
-        !slug || a.category?.toLowerCase().includes(slug.toLowerCase()) ||
-        a.title?.toLowerCase().includes(slug.toLowerCase())
-      );
+      const normalized = list.map(normalizeArtwork);
 
       if (reset) setArtworks(normalized);
       else setArtworks(prev => [...prev, ...normalized]);
 
       const nextCursor = res.nextCursor ?? res.data?.nextCursor;
       setCursor(nextCursor);
-      setHasMore(!!nextCursor && normalized.length >= 20);
+      setHasMore(!!nextCursor);
     } catch (e: any) {
       console.warn('[Category]', e.message);
     }
-  }, [cursor, slug]);
+  }, [cursor, category?.id, sort]);
 
-  useEffect(() => { load(true).finally(() => setLoading(false)); }, [slug]);
+  // Refetch from the start whenever the category resolves or the sort changes;
+  // sorting must come from the server or it only reorders the loaded page.
+  useEffect(() => {
+    if (categoryLoading) return;
+    setLoading(true);
+    setCursor(undefined);
+    load(true).finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category?.id, sort, categoryLoading]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     load(true).finally(() => setRefreshing(false));
   }, [load]);
 
-  const sorted = [...artworks].sort((a, b) => {
-    if (sort === 'Price: Low–High') return a.price - b.price;
-    if (sort === 'Price: High–Low') return b.price - a.price;
-    return 0;
-  });
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -101,16 +118,16 @@ export default function CategoryPage() {
 
         {/* Sort options */}
         <FlatList
-          data={SORT_OPTIONS}
+          data={[...SORT_OPTIONS]}
           horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.sortList}
-          keyExtractor={i => i}
+          keyExtractor={i => i.value}
           renderItem={({ item }) => (
             <TouchableOpacity
-              style={[styles.sortChip, sort === item && styles.sortChipActive]}
-              onPress={() => setSort(item)}
+              style={[styles.sortChip, sort === item.value && styles.sortChipActive]}
+              onPress={() => setSort(item.value)}
             >
-              <Text style={[styles.sortText, sort === item && styles.sortTextActive]}>{item}</Text>
+              <Text style={[styles.sortText, sort === item.value && styles.sortTextActive]}>{item.label}</Text>
             </TouchableOpacity>
           )}
         />
@@ -122,7 +139,7 @@ export default function CategoryPage() {
         </View>
       ) : (
         <FlatList
-          data={sorted}
+          data={artworks}
           keyExtractor={i => String(i.id)}
           numColumns={2}
           columnWrapperStyle={{ gap: Spacing.sm, paddingHorizontal: Spacing.md }}

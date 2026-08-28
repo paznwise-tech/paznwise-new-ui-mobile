@@ -1,60 +1,107 @@
 import { fetchApi, MEDIA_BASE_URL } from './api';
 
-export type SearchType = 'all' | 'users' | 'products' | 'posts';
+/**
+ * Unified search — `GET /search?q=`, public.
+ *
+ * One Elasticsearch-backed call covers users, products, posts and events,
+ * with a database fallback server-side when Elastic is offline. Both paths
+ * return the same shape, and every result carries a `type` discriminator.
+ *
+ * The app previously issued three separate domain calls and merged them,
+ * which meant posts were never searched at all and each tab had different
+ * relevance.
+ */
 
-export interface SearchUser {
+export type SearchType = 'all' | 'users' | 'products' | 'feed' | 'events';
+
+export interface SearchResultBase {
   id: string;
-  name: string;
+  type: 'user' | 'product' | 'post' | 'event';
+  score?: number;
+  createdAt?: string;
+}
+
+export interface UserResult extends SearchResultBase {
+  type: 'user';
   username: string;
+  name: string;
+  bio?: string;
+  role?: string;
   avatar?: string;
   isVerified?: boolean;
-  role?: string;            // ARTIST | BUYER | ORGANIZER | PERFORMER
   followersCount?: number;
 }
 
-function resolveAvatarUrl(url: string | null | undefined): string | undefined {
+export interface ProductResult extends SearchResultBase {
+  type: 'product';
+  title: string;
+  description?: string;
+  price: number;
+  comparePrice?: number | null;
+  medium?: string;
+  images?: string[];
+  /** Seller display name. */
+  name?: string;
+}
+
+export interface PostResult extends SearchResultBase {
+  type: 'post';
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  name?: string;
+  username?: string;
+}
+
+export interface EventResult extends SearchResultBase {
+  type: 'event';
+  title: string;
+  description?: string;
+  category?: string;
+  eventDate?: string;
+  venueName?: string;
+  name?: string;
+}
+
+export type SearchResult = UserResult | ProductResult | PostResult | EventResult;
+
+/** @deprecated name kept for existing call sites; prefer `UserResult`. */
+export type SearchUser = UserResult;
+
+export interface SearchResponse {
+  query: string;
+  total: number;
+  results: SearchResult[];
+}
+
+/** Resolves a bare S3 key to an absolute URL; passes through full URLs. */
+export function resolveMedia(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('http')) return url;
   return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 }
 
-// The search API is Elasticsearch-backed; response field names can vary, so
-// pull the users array from whatever shape comes back and normalize it.
-function extractUsers(payload: any): any[] {
-  const d = payload?.data ?? payload;
-  if (Array.isArray(d)) return d;
-  return d?.users ?? d?.results?.users ?? d?.results ?? [];
-}
-
-function normalizeUser(u: any): SearchUser {
-  const role = u?.role ?? u?.user?.role ?? undefined;
-  return {
-    id: u?.userId ?? u?.id ?? u?._id ?? '',
-    name: u?.name ?? u?.fullName ?? u?.user?.name ?? u?.username ?? '',
-    username: u?.username ?? u?.user?.username ?? '',
-    avatar: resolveAvatarUrl(u?.avatar ?? u?.picture ?? u?.profilePicture ?? u?.user?.picture),
-    isVerified: u?.isVerified ?? u?.user?.isVerified ?? false,
-    role: role ? String(role).toUpperCase() : undefined,
-    followersCount: u?.followersCount ?? u?.followers ?? 0,
-  };
-}
-
 export const SearchService = {
-  async searchUsers(
+  async search(
     q: string,
-    options?: { page?: number; limit?: number }
-  ): Promise<SearchUser[]> {
-    const query = q.trim();
-    if (!query) return [];
-    // Note: /api/search (Elasticsearch) is unavailable on this backend, so we
-    // use the dedicated user-search endpoint, which returns { data: { users } }.
-    const params = new URLSearchParams({ q: query });
-    params.set('page', String(options?.page ?? 1));
-    params.set('limit', String(options?.limit ?? 15));
+    opts: { type?: SearchType; page?: number; limit?: number } = {},
+  ): Promise<SearchResponse> {
+    const params = new URLSearchParams({ q });
+    if (opts.type && opts.type !== 'all') params.set('type', opts.type);
+    if (opts.page) params.set('page', String(opts.page));
+    if (opts.limit) params.set('limit', String(opts.limit));
 
-    const res = await fetchApi<any>(`/api/users/search?${params.toString()}`, { requiresAuth: true });
-    return extractUsers(res)
-      .map(normalizeUser)
-      .filter(u => u.id);
+    const res = await fetchApi<any>(`/search?${params.toString()}`, { requiresAuth: false });
+    return {
+      query: res?.query ?? q,
+      total: res?.total ?? 0,
+      results: Array.isArray(res?.results) ? res.results : [],
+    };
+  },
+
+  /** People search, used by the messaging screens to start a conversation. */
+  async searchUsers(q: string, opts: { limit?: number } = {}): Promise<UserResult[]> {
+    const { results } = await SearchService.search(q, { type: 'users', limit: opts.limit ?? 20 });
+    return results.filter((r): r is UserResult => r.type === 'user');
   },
 };

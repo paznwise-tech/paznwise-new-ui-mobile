@@ -4,29 +4,53 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { PerformerCard } from '@/components/artist/PerformerCard';
-import { PERFORMER_TYPES } from '@/constants/data';
+import { usePerformerCategories } from '@/hooks/useTaxonomy';
 import { Performer } from '@/types';
 import { ArtistServiceApi } from '@/services/artistService';
+
+const ALL_TYPE = { key: 'All', label: 'All', emoji: '✦' };
+
+// The API has no icon per service category, so one is chosen by name and
+// falls back to a neutral mask rather than leaving the chip bare.
+const TYPE_EMOJI: Record<string, string> = {
+  paint: '🎨', art: '🎨', music: '🎵', musician: '🎵', sing: '🎤',
+  danc: '💃', magic: '🎩', dj: '🎧', mehendi: '🌿', henna: '🌿',
+  comedy: '😂', standup: '🎤', theatre: '🎭', drama: '🎭', photo: '📷',
+};
+
+function emojiFor(label: string): string {
+  const lower = label.toLowerCase();
+  for (const [needle, emoji] of Object.entries(TYPE_EMOJI)) {
+    if (lower.includes(needle)) return emoji;
+  }
+  return '🎭';
+}
 
 export default function Hire() {
   const [services, setServices] = useState<Array<Performer & { serviceId: string }>>([]);
   const [loading, setLoading]   = useState(true);
-  const [active, setActive]     = useState('All');
+  const [active, setActive]     = useState(ALL_TYPE.key);
 
+  const { data: apiCategories = [] } = usePerformerCategories();
+
+  const types = useMemo(
+    () => [ALL_TYPE, ...apiCategories.map(c => ({ key: c.key, label: c.label, emoji: emojiFor(c.label) }))],
+    [apiCategories],
+  );
+
+  // Filtering is done by the API. The previous fuzzy substring match over a
+  // hardcoded type list both missed real categories and matched wrong ones.
   useEffect(() => {
-    ArtistServiceApi.getServices({ limit: 50 })
-      .then(data => setServices(data))
-      .catch(() => setServices([]))
-      .finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    ArtistServiceApi.getServices({ limit: 50, category: active })
+      .then(data => { if (!cancelled) setServices(data); })
+      .catch(() => { if (!cancelled) setServices([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [active]);
 
-  const filtered = useMemo(() => {
-    if (active === 'All') return services;
-    return services.filter(p =>
-      p.type.toLowerCase().includes(active.toLowerCase()) ||
-      active.toLowerCase().includes(p.type.toLowerCase())
-    );
-  }, [services, active]);
+  const filtered = services;
 
   const handlePerformerPress = useCallback((serviceId: string) => {
     router.push(`/booking/${serviceId}` as any);
@@ -36,7 +60,7 @@ export default function Hire() {
     <PerformerCard item={item} onPress={() => handlePerformerPress(item.serviceId)} />
   ), [handlePerformerPress]);
 
-  const renderTypeItem = useCallback(({ item }: { item: typeof PERFORMER_TYPES[0] | { key: string; label: string; emoji: string } }) => (
+  const renderTypeItem = useCallback(({ item }: { item: { key: string; label: string; emoji: string } }) => (
     <TouchableOpacity
       style={[styles.typeChip, active === item.key && styles.typeChipActive]}
       onPress={() => setActive(item.key)}
@@ -58,7 +82,7 @@ export default function Hire() {
         </View>
 
         <FlatList
-          data={[{ key: 'All', label: 'All', emoji: '✦' }, ...PERFORMER_TYPES]}
+          data={types}
           horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.typeList}
           keyExtractor={i => i.key}

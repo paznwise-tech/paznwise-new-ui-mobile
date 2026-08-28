@@ -131,6 +131,9 @@ export interface DigitalAsset {
 export interface ProductResponse {
   id: string;
   sellerId: string;
+  /** Owner has opted this artwork into rentals; rate is per day. */
+  rentalEligible?: boolean;
+  rentalDailyRate?: number | string | null;
   linkedPostId: number | null;
   title: string;
   description: string;

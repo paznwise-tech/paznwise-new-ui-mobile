@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -7,73 +7,119 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { StarRow } from '@/components/ui/StarRow';
 import { ArtistServiceApi } from '@/services/artistService';
-import { BookingService } from '@/services/bookingService';
+import {
+  BookingService, type ServiceSlot, type ServiceBookingResult,
+} from '@/services/bookingService';
+import { useRazorpayPayment } from '@/payments/useRazorpayPayment';
+import { toPaise } from '@/payments/razorpay';
+import { useUser } from '@/context/AppContext';
 import { Performer } from '@/types';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatSlotDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
 
 export default function BookDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useUser();
 
-  const [performer, setPerformer]   = useState<(Performer & { serviceId: string }) | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [performer, setPerformer] = useState<(Performer & { serviceId: string }) | null>(null);
+  const [loading, setLoading]     = useState(true);
 
-  const [date, setDate]           = useState('');
-  const [startTime, setStartTime] = useState('6:00 PM');
-  const [duration, setDuration]   = useState('3 hrs');
+  // Slots are the artist's actual availability. The date and time used to be
+  // free-text fields defaulting to '6:00 PM' and '3 hrs', so a booking could
+  // be requested for a time the artist had never offered.
+  const [slots, setSlots]         = useState<ServiceSlot[]>([]);
+  const [slotId, setSlotId]       = useState<string | null>(null);
   const [venue, setVenue]         = useState('');
-  const [guests, setGuests]       = useState(50);
   const [notes, setNotes]         = useState('');
 
   useEffect(() => {
     if (!id) return;
     ArtistServiceApi.getServiceById(String(id))
-      .then(s => { if (s) setPerformer(s); })
+      .then(async s => {
+        if (!s) return;
+        setPerformer(s);
+        const list = await BookingService.getServiceSlots(s.serviceId).catch(() => []);
+        setSlots(list);
+        const firstOpen = list.find(sl => !sl.isFull);
+        if (firstOpen) setSlotId(firstOpen.id);
+      })
       .catch(err => console.warn('[BookDetail] load error:', err))
       .finally(() => setLoading(false));
   }, [id]);
 
+  const selectedSlot = useMemo(() => slots.find(s => s.id === slotId) ?? null, [slots, slotId]);
+
+  // Indicative only — the server recomputes the amount, including its
+  // commission split, when the booking is created.
   const baseFee = useMemo(() => {
-    if (!performer) return 5000;
+    if (!performer) return 0;
     const num = performer.price.replace(/[^\d]/g, '');
-    return num ? parseInt(num, 10) : 5000;
+    return num ? parseInt(num, 10) : 0;
   }, [performer]);
 
-  const travelFee     = 500;
-  const platformFee   = Math.round(baseFee * 0.1);
-  const totalEstimation = baseFee + travelFee + platformFee;
+  const { pay, processing } = useRazorpayPayment<ServiceBookingResult>({
+    createOrder: async () => {
+      if (!performer || !selectedSlot) throw new Error('Pick a time slot to continue.');
 
-  const handleConfirmBooking = useCallback(async () => {
-    if (!date)  { alert('Please enter a booking date'); return; }
-    if (!venue) { alert('Please enter a venue or location'); return; }
-    if (!performer || submitting) return;
-
-    setSubmitting(true);
-    try {
-      const result = await BookingService.bookService(performer.serviceId, {
-        date,
-        startTime,
-        duration,
-        venue,
-        guestCount: guests,
-        notes,
-        totalPrice: totalEstimation,
+      const booking = await BookingService.bookService({
+        serviceId: performer.serviceId,
+        slotId: selectedSlot.id,
+        bookingDate: selectedSlot.date,
+        address: venue.trim() || undefined,
+        specialNotes: notes.trim() || undefined,
+        paymentMethod: 'UPI',
       });
+
+      pendingBookingRef.current = booking;
+
+      if (!booking.razorpayOrderId || !booking.keyId) return null;
+
+      return {
+        razorpayOrderId: booking.razorpayOrderId,
+        keyId: booking.keyId,
+        amountPaise: toPaise(booking.totalAmount),
+        description: performer.name,
+        internalId: booking.id,
+        prefill: { name: user.name || undefined, email: user.email || undefined },
+      };
+    },
+    verify: async (payment, internalId) =>
+      BookingService.verifyPayment(String(internalId), {
+        razorpay_order_id: payment.razorpay_order_id,
+        razorpay_payment_id: payment.razorpay_payment_id,
+        razorpay_signature: payment.razorpay_signature,
+      }),
+    // No gateway configured: the request still stands and the artist is
+    // notified — it just waits on payment being arranged another way.
+    onFree: async () => pendingBookingRef.current!,
+    invalidate: [['my-service-bookings']],
+    onSuccess: booking => {
       router.replace({
         pathname: '/booking/confirmed',
         params: {
-          performerName: performer.name,
-          bookingId: result?.id ?? '',
-          date,
+          performerName: performer?.name ?? '',
+          bookingId: booking.bookingRef,
+          date: selectedSlot ? formatSlotDate(selectedSlot.date) : '',
           venue,
-          amount: String(totalEstimation),
+          amount: String(booking.totalAmount ?? 0),
         },
       } as any);
-    } catch (e: any) {
-      alert(e.message ?? 'Failed to submit booking. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [date, venue, startTime, duration, guests, notes, totalEstimation, performer, submitting]);
+    },
+  });
+
+  const pendingBookingRef = useRef<ServiceBookingResult | null>(null);
+
+  const handleConfirmBooking = useCallback(() => {
+    if (!selectedSlot) { Alert.alert('Pick a time', 'Please select an available slot.'); return; }
+    if (!venue.trim()) { Alert.alert('Venue needed', 'Please enter the event address or venue.'); return; }
+    pay();
+  }, [selectedSlot, venue, pay]);
 
   if (loading) {
     return (
@@ -125,25 +171,42 @@ export default function BookDetail() {
 
           <Text style={styles.sectionTitle}>Event Details</Text>
 
+          {/* Availability */}
           <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Event Date</Text>
-            <TextInput
-              value={date} onChangeText={setDate}
-              placeholder="DD / MM / YYYY"
-              placeholderTextColor={Colors.creamFaint}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.fieldRow}>
-            <View style={[styles.fieldGroup, { flex: 1 }]}>
-              <Text style={styles.fieldLabel}>Start Time</Text>
-              <TextInput value={startTime} onChangeText={setStartTime} placeholder="6:00 PM" placeholderTextColor={Colors.creamFaint} style={styles.input} />
-            </View>
-            <View style={[styles.fieldGroup, { flex: 1 }]}>
-              <Text style={styles.fieldLabel}>Duration</Text>
-              <TextInput value={duration} onChangeText={setDuration} placeholder="3 hrs" placeholderTextColor={Colors.creamFaint} style={styles.input} />
-            </View>
+            <Text style={styles.fieldLabel}>Available Slots</Text>
+            {slots.length === 0 ? (
+              <Text style={styles.noSlots}>
+                This artist has not published any availability yet. Try again later or message them.
+              </Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                  {slots.map(slot => {
+                    const active = slotId === slot.id;
+                    return (
+                      <TouchableOpacity
+                        key={slot.id}
+                        style={[
+                          styles.slotChip,
+                          active && styles.slotChipActive,
+                          slot.isFull && styles.slotChipFull,
+                        ]}
+                        onPress={() => !slot.isFull && setSlotId(slot.id)}
+                        disabled={slot.isFull}
+                      >
+                        <Text style={[styles.slotDate, active && { color: Colors.gold }]}>
+                          {formatSlotDate(slot.date)}
+                        </Text>
+                        <Text style={styles.slotTime}>
+                          {slot.startTime}–{slot.endTime}
+                        </Text>
+                        {slot.isFull && <Text style={styles.slotFull}>Full</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            )}
           </View>
 
           <View style={styles.fieldGroup}>
@@ -154,23 +217,6 @@ export default function BookDetail() {
               placeholderTextColor={Colors.creamFaint}
               style={styles.input}
             />
-          </View>
-
-          {/* Guests */}
-          <View style={styles.guestSection}>
-            <Text style={styles.fieldLabel}>Estimated Guests</Text>
-            <View style={styles.guestRow}>
-              <TouchableOpacity style={styles.guestBtn} onPress={() => setGuests(g => Math.max(10, g - 10))}>
-                <Text style={styles.guestBtnText}>−</Text>
-              </TouchableOpacity>
-              <View style={styles.guestBar}>
-                <View style={[styles.guestFill, { width: `${Math.min((guests / 200) * 100, 100)}%` }]} />
-              </View>
-              <TouchableOpacity style={[styles.guestBtn, styles.guestBtnPlus]} onPress={() => setGuests(g => Math.min(200, g + 10))}>
-                <Text style={[styles.guestBtnText, { color: Colors.bg }]}>+</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.guestCount}>{guests} guests</Text>
           </View>
 
           <View style={styles.fieldGroup}>
@@ -189,21 +235,17 @@ export default function BookDetail() {
             <View style={styles.priceCardHeader}>
               <Text style={styles.priceCardTitle}>Price Estimate</Text>
             </View>
-            {[
-              ['Artist Fee', `₹${baseFee.toLocaleString('en-IN')}`],
-              ['Travel & Hospitality', `₹${travelFee.toLocaleString('en-IN')}`],
-              ['Platform Fee (10%)', `₹${platformFee.toLocaleString('en-IN')}`],
-            ].map(([k, v]) => (
-              <View key={k} style={styles.priceRow}>
-                <Text style={styles.priceKey}>{k}</Text>
-                <Text style={styles.priceVal}>{v}</Text>
-              </View>
-            ))}
-            <View style={styles.priceDivider} />
             <View style={styles.priceRow}>
-              <Text style={styles.priceTotalKey}>Total</Text>
-              <Text style={styles.priceTotal}>₹{totalEstimation.toLocaleString('en-IN')}</Text>
+              <Text style={styles.priceKey}>Artist rate</Text>
+              <Text style={styles.priceVal}>
+                {baseFee > 0 ? `₹${baseFee.toLocaleString('en-IN')}` : performer.price}
+              </Text>
             </View>
+            <View style={styles.priceDivider} />
+            <Text style={styles.priceNote}>
+              The final amount, including any platform fee, is calculated when your
+              request is submitted and shown before you pay.
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -211,7 +253,7 @@ export default function BookDetail() {
       {/* CTA */}
       <View style={styles.bottomCta}>
         <GoldButton
-          label={submitting ? 'Submitting…' : `Confirm Booking · ₹${totalEstimation.toLocaleString('en-IN')}`}
+          label={processing ? 'Processing…' : 'Request Booking'}
           onPress={handleConfirmBooking}
           size="lg"
           fullWidth
@@ -234,6 +276,16 @@ const styles = StyleSheet.create({
   performerName: { ...Typography.heading, fontSize: 18, marginBottom: 4 },
   price: { ...Typography.display, fontSize: 18, color: Colors.gold },
   sectionTitle: { ...Typography.heading, fontSize: 20, marginTop: Spacing.sm },
+  slotChip: {
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard, alignItems: 'center',
+  },
+  slotChipActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '18' },
+  slotChipFull: { opacity: 0.4 },
+  slotDate: { ...Typography.bodySemibold, fontSize: 13 },
+  slotTime: { ...Typography.caption, fontSize: 11, marginTop: 2 },
+  slotFull: { ...Typography.caption, fontSize: 10, color: Colors.error, marginTop: 2 },
+  noSlots: { ...Typography.body, fontSize: 13, color: Colors.creamDim, lineHeight: 19 },
   fieldGroup: { gap: Spacing.xs },
   fieldRow: { flexDirection: 'row', gap: Spacing.sm },
   fieldLabel: { ...Typography.label, fontSize: 9, color: Colors.creamDim },
@@ -252,6 +304,7 @@ const styles = StyleSheet.create({
   priceRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   priceKey: { ...Typography.caption, fontSize: 13 },
   priceVal: { ...Typography.bodySemibold, fontSize: 13 },
+  priceNote: { ...Typography.caption, fontSize: 12, lineHeight: 17, marginTop: Spacing.sm },
   priceDivider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.md, marginVertical: 4 },
   priceTotalKey: { ...Typography.bodyBold, fontSize: 15 },
   priceTotal: { ...Typography.display, fontSize: 20, color: Colors.gold },

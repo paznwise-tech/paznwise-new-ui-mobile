@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Modal, ActivityIndicator, NativeSyntheticEvent, NativeScrollEvent,
+  Dimensions, Modal, ActivityIndicator, NativeSyntheticEvent, NativeScrollEvent, Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,10 +9,11 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { StarRow } from '@/components/ui/StarRow';
-import { useCart, useFavorites } from '@/context/AppContext';
+import { useCart, useFavorites, useUser } from '@/context/AppContext';
 import { useProductDetail } from '@/hooks/useProducts';
 import { UserService, PublicUser } from '@/services/userService';
 import { ReviewService, Review } from '@/services/reviewService';
+import { ProductService } from '@/services/productService';
 import { API_BASE_URL } from '@/services/api';
 
 const { width } = Dimensions.get('window');
@@ -21,6 +22,7 @@ export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { product, loading, error } = useProductDetail(id);
   const { cart, addToCart } = useCart();
+  const { status } = useUser();
   const { isFavorite, toggleFavorite } = useFavorites();
 
   const [tab, setTab] = useState<'about' | 'details' | 'policies'>('about');
@@ -35,23 +37,76 @@ export default function ProductDetail() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [avgRating, setAvgRating] = useState(0);
   const [reviewCount, setReviewCount] = useState(0);
+  const [distribution, setDistribution] = useState<Record<number, number>>({});
+  const [canReview, setCanReview] = useState(false);
+  const [helpfulIds, setHelpfulIds] = useState<string[]>([]);
+  const [merchandise, setMerchandise] = useState<any[]>([]);
 
   useEffect(() => {
     if (!product?.sellerId) return;
     UserService.getProfileById(product.sellerId).then(setSeller).catch(() => {});
   }, [product?.sellerId]);
 
-  useEffect(() => {
+  const loadReviews = useCallback(() => {
     if (!id) return;
-    ReviewService.getProductReviews(id).then(({ reviews: r, avgRating: avg, count }) => {
+    ReviewService.getProductReviews(id).then(({ reviews: r, avgRating: avg, count, distribution: dist }) => {
       setReviews(r);
       setAvgRating(avg);
       setReviewCount(count);
+      setDistribution(dist);
     });
   }, [id]);
 
+  useEffect(() => { loadReviews(); }, [loadReviews]);
+
+  // Approved merchandise licensed from this artwork. Empty for most
+  // products, so the section only appears when there is something to show.
+  useEffect(() => {
+    if (!id) return;
+    ProductService.getMerchandiseForProduct(String(id))
+      .then(setMerchandise)
+      .catch(() => setMerchandise([]));
+  }, [id]);
+
+  // Eligibility is decided server-side (it checks the buyer actually
+  // received the item), so the write entry only appears when it says yes.
+  useEffect(() => {
+    if (!id || status !== 'signedIn') { setCanReview(false); return; }
+    ReviewService.canReview(String(id)).then(setCanReview);
+  }, [id, status]);
+
+  const handleHelpful = useCallback(async (reviewId: string) => {
+    if (helpfulIds.includes(reviewId)) return;
+    setHelpfulIds(prev => [...prev, reviewId]);
+    setReviews(prev => prev.map(r => (r.id === reviewId ? { ...r, helpful: (r.helpful ?? 0) + 1 } : r)));
+    try {
+      await ReviewService.markHelpful(reviewId);
+    } catch {
+      setHelpfulIds(prev => prev.filter(x => x !== reviewId));
+      setReviews(prev => prev.map(r => (r.id === reviewId ? { ...r, helpful: Math.max(0, (r.helpful ?? 1) - 1) } : r)));
+    }
+  }, [helpfulIds]);
+
+  const handleReport = useCallback((reviewId: string) => {
+    Alert.alert('Report review', 'Tell us what is wrong with this review.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Spam', onPress: () => submitReport(reviewId, 'Spam') },
+      { text: 'Offensive', onPress: () => submitReport(reviewId, 'Offensive content') },
+      { text: 'Not about this product', onPress: () => submitReport(reviewId, 'Irrelevant') },
+    ]);
+  }, []);
+
+  const submitReport = async (reviewId: string, reason: string) => {
+    try {
+      await ReviewService.reportReview(reviewId, reason);
+      Alert.alert('Reported', 'Thanks — our team will take a look.');
+    } catch (e: any) {
+      Alert.alert('Could not report', e?.message ?? 'Please try again.');
+    }
+  };
+
   const liked = product ? isFavorite(Number(product.id)) : false;
-  const inCart = product ? cart.some(c => c.id === Number(product.id)) : false;
+  const inCart = product ? cart.some(c => c.productId === String(product.id)) : false;
 
   const getImageUrl = (url?: string) => {
     if (!url) return 'https://via.placeholder.com/400?text=No+Image';
@@ -63,35 +118,49 @@ export default function ProductDetail() {
     if (product) toggleFavorite(Number(product.id));
   }, [product, toggleFavorite]);
 
-  const handleCartPress = useCallback(() => {
+  // The cart endpoints require a session, so a guest is sent to sign in at
+  // the point they act rather than being blocked from browsing.
+  const requireSession = useCallback(() => {
+    if (status === 'signedIn') return true;
+    router.push('/(auth)/login');
+    return false;
+  }, [status]);
+
+  const handleCartPress = useCallback(async () => {
     if (inCart) {
       router.push('/product/cart' as any);
-    } else if (product) {
-      addToCart({
-        id: Number(product.id) || Date.now(),
-        title: product.title,
-        price: product.price,
-        artist: product.brand || 'Artist',
-        location: 'Global',
-        img: getImageUrl(product.thumbnailUrl ?? product.productImages?.[0] ?? product.images?.[0]),
-      });
+      return;
+    }
+    if (!product || !requireSession()) return;
+    try {
+      await addToCart(product.id);
       setShowCartModal(true);
+    } catch (e: any) {
+      Alert.alert('Could not add to cart', e?.message ?? 'Please try again.');
     }
-  }, [inCart, product, addToCart]);
+  }, [inCart, product, addToCart, requireSession]);
 
-  const handleBuyNow = useCallback(() => {
-    if (product) {
-      addToCart({
-        id: Number(product.id) || Date.now(),
+  const handleRent = useCallback(() => {
+    if (!product || !requireSession()) return;
+    router.push({
+      pathname: '/rentals/request',
+      params: {
+        productId: String(product.id),
         title: product.title,
-        price: product.price,
-        artist: product.brand || 'Artist',
-        location: 'Global',
-        img: getImageUrl(product.thumbnailUrl ?? product.productImages?.[0] ?? product.images?.[0]),
-      });
-      router.push('/product/cart' as any);
+        dailyRate: String(product.rentalDailyRate ?? ''),
+      },
+    } as any);
+  }, [product, requireSession]);
+
+  const handleBuyNow = useCallback(async () => {
+    if (!product || !requireSession()) return;
+    try {
+      if (!inCart) await addToCart(product.id);
+      router.push('/checkout' as any);
+    } catch (e: any) {
+      Alert.alert('Could not continue', e?.message ?? 'Please try again.');
     }
-  }, [product, addToCart]);
+  }, [product, inCart, addToCart, requireSession]);
 
   const handleCarouselScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -292,10 +361,68 @@ export default function ProductDetail() {
                 )}
               </View>
 
+              {/* Merchandise licensed from this artwork */}
+              {merchandise.length > 0 && (
+                <View style={styles.merchSection}>
+                  <Text style={styles.reviewsTitle}>Available as merchandise</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                      {merchandise.map((m: any) => (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={styles.merchCard}
+                          onPress={() => router.push(`/product/${m.id}` as any)}
+                        >
+                          <Text style={styles.merchTitle} numberOfLines={2}>{m.title}</Text>
+                          {m.price != null && (
+                            <Text style={styles.merchPrice}>
+                              ₹{Number(m.price).toLocaleString('en-IN')}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* Rating distribution */}
+              {reviewCount > 0 && (
+                <View style={styles.distribution}>
+                  {[5, 4, 3, 2, 1].map(star => {
+                    const n = distribution[star] ?? 0;
+                    const pct = reviewCount > 0 ? (n / reviewCount) * 100 : 0;
+                    return (
+                      <View key={star} style={styles.distRow}>
+                        <Text style={styles.distStar}>{star}★</Text>
+                        <View style={styles.distTrack}>
+                          <View style={[styles.distFill, { width: `${pct}%` }]} />
+                        </View>
+                        <Text style={styles.distCount}>{n}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {canReview && (
+                <TouchableOpacity
+                  style={styles.writeReviewBtn}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/reviews/write',
+                      params: { productId: String(product.id), productTitle: product.title },
+                    } as any)
+                  }
+                >
+                  <Text style={styles.writeReviewText}>✍️  Write a review</Text>
+                </TouchableOpacity>
+              )}
+
               {reviews.length === 0 ? (
                 <Text style={styles.noReviews}>No reviews yet. Be the first to review!</Text>
               ) : (
-                reviews.slice(0, 3).map(r => (
+                reviews.slice(0, 5).map(r => (
                   <View key={r.id} style={styles.reviewCard}>
                     <View style={styles.reviewTop}>
                       <StarRow rating={r.rating} count={0} />
@@ -304,6 +431,19 @@ export default function ProductDetail() {
                       </Text>
                     </View>
                     <Text style={styles.reviewComment}>{r.comment}</Text>
+                    <View style={styles.reviewActions}>
+                      <TouchableOpacity
+                        onPress={() => handleHelpful(r.id)}
+                        disabled={helpfulIds.includes(r.id)}
+                      >
+                        <Text style={[styles.reviewAction, helpfulIds.includes(r.id) && { color: Colors.gold }]}>
+                          👍 Helpful{r.helpful ? ` (${r.helpful})` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleReport(r.id)}>
+                        <Text style={styles.reviewAction}>Report</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))
               )}
@@ -390,6 +530,15 @@ export default function ProductDetail() {
             />
           </View>
         </View>
+
+        {/* Only when the owner has opted this artwork into rentals. */}
+        {product.rentalEligible && product.rentalDailyRate ? (
+          <TouchableOpacity style={styles.rentBtn} onPress={handleRent}>
+            <Text style={styles.rentBtnText}>
+              Rent from ₹{Number(product.rentalDailyRate).toLocaleString('en-IN')}/day
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* Added to Cart Modal */}
@@ -470,6 +619,31 @@ const styles = StyleSheet.create({
   tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
   tagBadge: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border },
   tagText: { ...Typography.caption, color: Colors.cream },
+  merchSection: { marginBottom: Spacing.lg },
+  merchCard: {
+    width: 120, padding: Spacing.sm, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+  },
+  merchTitle: { ...Typography.caption, fontSize: 12, color: Colors.cream },
+  merchPrice: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold, marginTop: 4 },
+  distribution: { gap: 4, marginBottom: Spacing.md },
+  distRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  distStar: { ...Typography.caption, fontSize: 11, width: 22 },
+  distTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: Colors.border, overflow: 'hidden' },
+  distFill: { height: 6, borderRadius: 3, backgroundColor: Colors.gold },
+  distCount: { ...Typography.caption, fontSize: 11, width: 24, textAlign: 'right' },
+  writeReviewBtn: {
+    borderWidth: 1, borderColor: Colors.gold + '66', borderRadius: Radius.md,
+    paddingVertical: Spacing.sm, alignItems: 'center', marginBottom: Spacing.md,
+  },
+  writeReviewText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
+  reviewActions: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.sm },
+  reviewAction: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
+  rentBtn: {
+    marginTop: Spacing.sm, paddingVertical: Spacing.sm, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.gold + '66', borderRadius: Radius.md,
+  },
+  rentBtnText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
   reviewsHeader: { marginTop: Spacing.lg, marginBottom: Spacing.sm },
   reviewsTitle: { ...Typography.heading, fontSize: 18, marginBottom: Spacing.xs },
   reviewsSummary: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },

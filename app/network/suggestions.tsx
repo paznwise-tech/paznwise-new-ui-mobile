@@ -10,6 +10,8 @@ export default function Suggestions() {
   const [users, setUsers] = useState<UserSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [followed, setFollowed] = useState<string[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadUsers = () => {
     setLoading(true);
@@ -27,6 +29,22 @@ export default function Suggestions() {
   };
 
   useEffect(() => { loadUsers(); }, []);
+
+  const toggleFollow = async (id: string) => {
+    const isFollowing = followed.includes(id);
+    setBusyId(id);
+    // Optimistic: the row flips immediately and rolls back if the call
+    // fails, so a slow network does not make the button feel dead.
+    setFollowed(prev => (isFollowing ? prev.filter(x => x !== id) : [...prev, id]));
+    try {
+      if (isFollowing) await UserService.unfollow(id);
+      else await UserService.follow(id);
+    } catch {
+      setFollowed(prev => (isFollowing ? [...prev, id] : prev.filter(x => x !== id)));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const renderItem = ({ item }: { item: UserSuggestion }) => (
     <TouchableOpacity style={styles.card} onPress={() => router.push({
@@ -52,6 +70,18 @@ export default function Suggestions() {
         <Text style={styles.username}>{item.username}</Text>
         {!!item.bio && <Text style={styles.bio} numberOfLines={1}>{item.bio}</Text>}
       </View>
+
+      {/* The point of a suggestions list is to follow from it. Tapping a
+          card only opened the profile, so following meant a round trip. */}
+      <TouchableOpacity
+        style={[styles.followBtn, followed.includes(item.id) && styles.followBtnDone]}
+        onPress={() => toggleFollow(item.id)}
+        disabled={busyId === item.id}
+      >
+        <Text style={[styles.followText, followed.includes(item.id) && { color: Colors.creamDim }]}>
+          {busyId === item.id ? '…' : followed.includes(item.id) ? 'Following' : 'Follow'}
+        </Text>
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 
@@ -87,6 +117,12 @@ export default function Suggestions() {
 }
 
 const styles = StyleSheet.create({
+  followBtn: {
+    paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.gold,
+  },
+  followBtnDone: { borderColor: Colors.border },
+  followText: { ...Typography.bodySemibold, fontSize: 12, color: Colors.gold },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, backgroundColor: Colors.bgCard, borderBottomWidth: 1, borderBottomColor: Colors.border },
   refreshBtn: { padding: Spacing.xs },
   refreshIcon: { color: Colors.gold, fontSize: 22 },

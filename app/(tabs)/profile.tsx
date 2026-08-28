@@ -8,17 +8,94 @@ import { useUser } from '@/context/AppContext';
 import { useCallback, useMemo, useEffect, useState } from 'react';
 import { MessageService } from '@/services/messageService';
 import { FullPhotoModal } from '@/components/ui/FullPhotoModal';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 
-const MENU_ITEMS = [
-  { icon: '🖼', label: 'My Orders',        sub: 'Track your artwork purchases',    route: '/product/cart' },
-  { icon: '🎨', label: 'Sell Artwork',      sub: 'List, manage & sell your art',   route: '/sell' },
-  { icon: '📸', label: 'My Posts',           sub: 'Manage, edit & share your artwork',     route: '/feed/my-posts' },
-  { icon: '🎵', label: 'My Bookings',      sub: 'Performer bookings & events',     route: '/booking/my-bookings' },
-  { icon: '💬', label: 'Messages',          sub: 'Chat with artists & sellers',     route: '/messages' },
-  { icon: '🎤', label: 'Register as Performer', sub: 'Get booked for events',      route: '/artist/register-artist' },
-  { icon: '⚙️', label: 'Settings',          sub: 'Account, privacy & more',        route: null },
-  { icon: '❓', label: 'Help & Support',    sub: 'FAQs, contact us',               route: null },
-];
+interface MenuItem {
+  icon: string;
+  label: string;
+  sub: string;
+  route: string;
+}
+
+interface MenuSection {
+  title: string;
+  items: MenuItem[];
+}
+
+/**
+ * The profile menu is the app's only route into most of its own screens —
+ * a screen missing from here is effectively unreachable, since there is no
+ * other navigation surface outside the five tabs.
+ */
+function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer: boolean }): MenuSection[] {
+  const shopping: MenuItem[] = [
+    { icon: '📦', label: 'My Orders',      sub: 'Track your artwork purchases',   route: '/orders' },
+    { icon: '🎟', label: 'Event Tickets',  sub: 'Your booked events',             route: '/event-bookings' },
+    { icon: '🎵', label: 'My Bookings',    sub: 'Performers you have hired',      route: '/booking/my-bookings' },
+    { icon: '🖼', label: 'My Rentals',     sub: 'Artwork you are renting',        route: '/rentals' },
+    { icon: '❤️', label: 'Saved Artworks', sub: 'Your saved pieces',              route: '/favorites' },
+    { icon: '🏷', label: 'Coupons',        sub: 'Offers you can use',             route: '/coupons' },
+    { icon: '⭐', label: 'My Reviews',     sub: 'Reviews you have written',       route: '/reviews' },
+    { icon: '📍', label: 'Addresses',      sub: 'Manage delivery addresses',      route: '/addresses' },
+    { icon: '↩️', label: 'Returns',        sub: 'Returns, replacements & refunds', route: '/returns' },
+  ];
+
+  const activity: MenuItem[] = [
+    { icon: '💬', label: 'Messages',      sub: 'Chat with artists & sellers',    route: '/messages' },
+    { icon: '🔔', label: 'Notifications', sub: 'Updates and activity',           route: '/notifications' },
+    { icon: '📸', label: 'My Posts',      sub: 'Manage, edit & share your work',  route: '/feed/my-posts' },
+    { icon: '🧭', label: 'Discover',      sub: 'Explore art, artists & events',  route: '/discover' },
+  ];
+
+  const selling: MenuItem[] = [
+    { icon: '🎨', label: 'Sell Artwork',      sub: 'List, manage & sell your art', route: '/sell' },
+    { icon: '📋', label: 'My Listings',       sub: 'Your products and stock',      route: '/product/my-listings' },
+    { icon: '📊', label: 'Seller Dashboard',  sub: 'Earnings and orders',          route: '/seller/dashboard' },
+  ];
+
+  // Supply-side sections appear only for the roles that can act on them —
+  // every route behind them is `authorize()`-gated server-side, so showing
+  // them to a buyer would only produce 403s.
+  const artist: MenuItem[] = [
+    { icon: '🎭', label: 'Artist Dashboard',  sub: 'Bookings and services',        route: '/artist/dashboard' },
+    { icon: '📥', label: 'Booking Requests',  sub: 'Accept or decline requests',   route: '/artist/bookings' },
+    { icon: '🗓', label: 'My Availability',   sub: 'Slots people can book',        route: '/artist/availability' },
+    { icon: '📮', label: 'Rental Requests',   sub: 'Requests for your artwork',    route: '/artist/rentals' },
+    { icon: '🎪', label: 'My Events',         sub: 'Events you are hosting',       route: '/artist/events' },
+  ];
+
+  const organizer: MenuItem[] = [
+    { icon: '🎟', label: 'Ticketed Events',  sub: 'Sales, tiers and attendees',   route: '/organizer/events' },
+  ];
+
+  const account: MenuItem[] = [
+    { icon: '✦', label: 'Plan & Billing', sub: 'Your plan, limits and usage',    route: '/subscription' },
+    { icon: '⚙️', label: 'Settings',       sub: 'Account, privacy & more',        route: '/settings' },
+    { icon: '❓', label: 'Help & Support', sub: 'FAQs and contact',               route: '/help' },
+  ];
+
+  const sections: MenuSection[] = [
+    { title: 'Shopping', items: shopping },
+    { title: 'Activity', items: activity },
+    { title: 'Selling', items: selling },
+  ];
+
+  if (opts.isArtist || opts.isPerformer) {
+    sections.push({ title: 'Artist', items: artist });
+  } else {
+    sections.push({
+      title: 'Artist',
+      items: [
+        { icon: '🎤', label: 'Register as Performer', sub: 'Get booked for events', route: '/artist/register-artist' },
+      ],
+    });
+  }
+
+  if (opts.isOrganizer) sections.push({ title: 'Organizer', items: organizer });
+
+  sections.push({ title: 'Account', items: account });
+  return sections;
+}
 
 export default function Profile() {
   const { user, logout, loadProfile } = useUser();
@@ -38,14 +115,26 @@ export default function Profile() {
       .catch(() => {});
   }, [isLoggedIn]);
 
+  const menuSections = useMemo(
+    () =>
+      buildMenu({
+        isArtist: user.isArtist || user.role === 'ARTIST',
+        isPerformer: user.isPerformer,
+        isOrganizer: user.role === 'ORGANIZER',
+      }),
+    [user.isArtist, user.isPerformer, user.role],
+  );
+
   const roleText = useMemo(() => {
     const map: Record<string, string> = { ARTIST: 'Artist', BUYER: 'Buyer', ORGANIZER: 'Organizer', ADMIN: 'Admin' };
     return user.role ? (map[user.role] ?? user.role) : 'Member';
   }, [user.role]);
 
   const handleSignOut = useCallback(async () => {
+    // No explicit navigation: logout flips the session to signedOut and the
+    // root layout's guard unmounts the authenticated stack. Replacing here
+    // would race that, targeting a route not yet mounted.
     await logout();
-    router.replace('/(auth)/login');
   }, [logout]);
 
   if (!isLoggedIn) {
@@ -63,7 +152,7 @@ export default function Profile() {
               <Text style={styles.signInText}>Sign In</Text>
             </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/(auth)/signup')}>
+          <TouchableOpacity onPress={() => router.push('/(auth)/request-otp')}>
             <Text style={styles.createText}>Create an account →</Text>
           </TouchableOpacity>
 
@@ -89,6 +178,9 @@ export default function Profile() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }} />
+      <View style={styles.topBar}>
+        <NotificationBell />
+      </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Profile header */}
         <LinearGradient colors={['#1C2F45', Colors.bg]} style={styles.profileHeader}>
@@ -140,32 +232,37 @@ export default function Profile() {
         </LinearGradient>
 
         {/* Menu */}
-        <View style={styles.menu}>
-          {MENU_ITEMS.map(item => {
-            const unreadBadge = item.label === 'Messages' && totalUnread > 0;
-            return (
-              <TouchableOpacity
-                key={item.label}
-                style={styles.menuItem}
-                onPress={() => item.route && router.push(item.route as any)}
-              >
-                <Text style={styles.menuIcon}>{item.icon}</Text>
-                <View style={styles.menuText}>
-                  <View style={styles.menuLabelRow}>
-                    <Text style={styles.menuLabel}>{item.label}</Text>
-                    {unreadBadge && (
-                      <View style={styles.menuBadge}>
-                        <Text style={styles.menuBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
+        {menuSections.map(section => (
+          <View key={section.title}>
+            <Text style={styles.menuSectionTitle}>{section.title}</Text>
+            <View style={styles.menu}>
+              {section.items.map(item => {
+                const unreadBadge = item.label === 'Messages' && totalUnread > 0;
+                return (
+                  <TouchableOpacity
+                    key={item.label}
+                    style={styles.menuItem}
+                    onPress={() => router.push(item.route as any)}
+                  >
+                    <Text style={styles.menuIcon}>{item.icon}</Text>
+                    <View style={styles.menuText}>
+                      <View style={styles.menuLabelRow}>
+                        <Text style={styles.menuLabel}>{item.label}</Text>
+                        {unreadBadge && (
+                          <View style={styles.menuBadge}>
+                            <Text style={styles.menuBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
+                          </View>
+                        )}
                       </View>
-                    )}
-                  </View>
-                  <Text style={styles.menuSub}>{item.sub}</Text>
-                </View>
-                <Text style={styles.menuArrow}>›</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                      <Text style={styles.menuSub}>{item.sub}</Text>
+                    </View>
+                    <Text style={styles.menuArrow}>›</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        ))}
 
         <TouchableOpacity style={styles.logout} onPress={handleSignOut}>
           <Text style={styles.logoutText}>Sign Out</Text>
@@ -214,7 +311,17 @@ const styles = StyleSheet.create({
   stat: { alignItems: 'center' },
   statVal: { ...Typography.bodyBold, fontSize: 18, color: Colors.gold },
   statLabel: { ...Typography.caption, fontSize: 11 },
-  menu: { paddingHorizontal: Spacing.md, paddingTop: Spacing.md, gap: 2 },
+  topBar: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: Spacing.md, paddingBottom: Spacing.xs },
+  menu: { paddingHorizontal: Spacing.md, paddingTop: Spacing.xs, gap: 2 },
+  menuSectionTitle: {
+    ...Typography.label,
+    fontSize: 10,
+    color: Colors.gold,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.lg,
+  },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.bgCard, borderRadius: Radius.md, padding: Spacing.md, marginBottom: 2, borderWidth: 1, borderColor: Colors.border },
   menuIcon: { fontSize: 20, width: 32 },
   menuText: { flex: 1 },

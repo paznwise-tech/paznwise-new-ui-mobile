@@ -37,7 +37,7 @@ export const AuthService = {
   /** Send OTP — phone number (10-digit or E.164 e.g. +919876543210) */
   async sendOtp(phone: string): Promise<{ message: string; otp?: string }> {
     // API response has no `data` wrapper: { success, message, otp? }
-    const res = await fetchApi<{ success: boolean; message: string; otp?: string }>('/api/auth/send-otp', {
+    const res = await fetchApi<{ success: boolean; message: string; otp?: string }>('/auth/send-otp', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ phone }),
@@ -51,7 +51,7 @@ export const AuthService = {
    * - New user     → { isNewUser: true, registrationToken }
    */
   async verifyOtp(phone: string, otp: string): Promise<VerifyOtpResponse> {
-    const res = await fetchApi<ApiResponse<VerifyOtpResponse>>('/api/auth/verify-otp', {
+    const res = await fetchApi<ApiResponse<VerifyOtpResponse>>('/auth/verify-otp', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ phone, otp }),
@@ -70,7 +70,7 @@ export const AuthService = {
     confirmPassword: string,
     registrationToken: string,
   ): Promise<LoginResponse> {
-    const res = await fetchApi<ApiResponse<LoginResponse>>('/api/auth/signup', {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/signup', {
       method: 'POST',
       requiresAuth: false,
       authToken: registrationToken,
@@ -81,7 +81,7 @@ export const AuthService = {
 
   /** Password-based login (email / phone / username) */
   async login(identifier: string, password: string): Promise<LoginResponse> {
-    const res = await fetchApi<ApiResponse<LoginResponse>>('/api/auth/login', {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/login', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ identifier, password }),
@@ -91,7 +91,7 @@ export const AuthService = {
 
   /** Sends a JWT reset link to the user's email */
   async forgotPassword(email: string): Promise<{ message: string }> {
-    const res = await fetchApi<{ success: boolean; message: string }>('/api/auth/forgot-password', {
+    const res = await fetchApi<{ success: boolean; message: string }>('/auth/forgot-password', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ email }),
@@ -101,7 +101,7 @@ export const AuthService = {
 
   /** Resets password using the JWT token from the reset email */
   async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
-    const res = await fetchApi<{ success: boolean; message: string }>('/api/auth/reset-password', {
+    const res = await fetchApi<{ success: boolean; message: string }>('/auth/reset-password', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ token, newPassword }),
@@ -111,7 +111,7 @@ export const AuthService = {
 
   /** Revokes the server session — call before clearing local tokens */
   async logoutApi(refreshToken: string): Promise<void> {
-    await fetchApi('/api/auth/logout', {
+    await fetchApi('/auth/logout', {
       method: 'POST',
       requiresAuth: true,
       body: JSON.stringify({ refreshToken }),
@@ -120,7 +120,7 @@ export const AuthService = {
 
   /** Token rotation — exchange a refresh token for new access + refresh tokens */
   async refreshTokens(refreshToken: string): Promise<LoginResponse> {
-    const res = await fetchApi<ApiResponse<LoginResponse>>('/api/auth/refresh', {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/refresh', {
       method: 'POST',
       requiresAuth: false,
       body: JSON.stringify({ refreshToken }),
@@ -128,16 +128,52 @@ export const AuthService = {
     return res.data;
   },
 
-  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    await fetchApi<any>('/api/auth/change-password', {
+  /**
+   * Deletes the signed-in user's account.
+   *
+   * `DELETE /users/me` does not exist — the account lives behind the
+   * profile resource.
+   */
+  /**
+   * Signs in with an OAuth provider's token.
+   *
+   * The provider token is exchanged server-side; nothing here trusts it
+   * locally.
+   */
+  async socialLogin(
+    provider: 'google' | 'facebook' | 'apple',
+    token: string,
+    name?: string,
+  ): Promise<LoginResponse> {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/social', {
+      method: 'POST',
+      requiresAuth: false,
+      body: JSON.stringify({ provider, token, name }),
+    });
+    return res.data;
+  },
+
+  /**
+   * Switches the session's active role.
+   *
+   * Returns a NEW access token carrying the new role — storing it is not
+   * optional, or the session keeps acting as the previous role. The server
+   * rejects a role the user does not actually hold, and its message names
+   * which, so no client-side list of available roles is invented here.
+   */
+  async switchRole(role: 'BUYER' | 'ARTIST' | 'ORGANIZER'): Promise<{ accessToken: string }> {
+    const res = await fetchApi<any>('/auth/switch-role', {
       method: 'POST',
       requiresAuth: true,
-      body: JSON.stringify({ currentPassword, newPassword }),
+      body: JSON.stringify({ role }),
     });
+    const d = res?.data ?? res;
+    if (!d?.accessToken) throw new Error('Role switch did not return a new session token.');
+    return { accessToken: d.accessToken };
   },
 
   async deleteAccount(): Promise<void> {
-    await fetchApi<any>('/api/users/me', {
+    await fetchApi<any>('/user/profile', {
       method: 'DELETE',
       requiresAuth: true,
     });

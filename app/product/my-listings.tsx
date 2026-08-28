@@ -6,10 +6,53 @@ import { Image } from 'expo-image';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { useMyProducts } from '@/hooks/useProducts';
 import { API_BASE_URL } from '@/services/api';
+import { ProductService } from '@/services/productService';
 
 export default function MyListings() {
   const { products, loading, error, refresh, deleteProduct } = useMyProducts();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const adjustStock = async (id: string, next: number) => {
+    if (next < 0) return;
+    setBusyId(id);
+    try {
+      await ProductService.updateStock(id, next);
+      refresh();
+    } catch (e: any) {
+      Alert.alert('Could not update stock', e?.message ?? 'Please try again.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const runAction = async (id: string, action: 'resubmit' | 'duplicate' | 'archive') => {
+    const confirmations = {
+      resubmit: ['Resubmit listing', 'Send this listing back for review?'],
+      duplicate: ['Duplicate listing', 'Create a copy of this listing as a draft?'],
+      archive: ['Archive listing', 'Hide this listing? Its order history is kept.'],
+    } as const;
+    const [title, message] = confirmations[action];
+
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: title.split(' ')[0],
+        onPress: async () => {
+          setBusyId(id);
+          try {
+            await ProductService[action](id);
+            refresh();
+          } catch (e: any) {
+            Alert.alert('Could not complete', e?.message ?? 'Please try again.');
+          } finally {
+            setBusyId(null);
+          }
+        },
+      },
+    ]);
+  };
 
   const handleDelete = (id: string) => {
     Alert.alert(
@@ -74,19 +117,70 @@ export default function MyListings() {
                 <Text style={styles.price}>₹{item.price.toLocaleString('en-IN')}</Text>
                 <View style={styles.statusRow}>
                   <Text style={styles.statusLabel}>Status:</Text>
-                  <Text style={[styles.statusValue, item.status === 'PUBLISHED' ? { color: Colors.success } : { color: Colors.warning }]}>
-                    {item.status}
+                  <Text style={[styles.statusValue, { color: statusColor(item.status) }]}>
+                    {String(item.status).replace(/_/g, ' ')}
                   </Text>
                 </View>
+
+                {/* Stock is edited inline: it changes far more often than
+                    anything else on a listing and does not need the form. */}
+                <View style={styles.stockRow}>
+                  <Text style={styles.statusLabel}>Stock:</Text>
+                  <TouchableOpacity
+                    style={styles.stockBtn}
+                    onPress={() => adjustStock(item.id, (item.stock ?? 0) - 1)}
+                    disabled={busyId === item.id || (item.stock ?? 0) <= 0}
+                  >
+                    <Text style={styles.stockBtnText}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.stockValue}>{item.stock ?? 0}</Text>
+                  <TouchableOpacity
+                    style={styles.stockBtn}
+                    onPress={() => adjustStock(item.id, (item.stock ?? 0) + 1)}
+                    disabled={busyId === item.id}
+                  >
+                    <Text style={styles.stockBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
                 <View style={styles.actions}>
-                  <TouchableOpacity 
-                    style={styles.actionBtn} 
+                  <TouchableOpacity
+                    style={styles.actionBtn}
                     onPress={() => router.push(`/product/edit/${item.id}` as any)}
                   >
                     <Text style={styles.actionText}>Edit</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[styles.actionBtn, styles.deleteBtn]} 
+
+                  {/* Only offered where the API accepts it: a rejected
+                      listing is the one thing resubmission applies to. */}
+                  {String(item.status).toUpperCase() === 'REJECTED' && (
+                    <TouchableOpacity
+                      style={styles.actionBtn}
+                      onPress={() => runAction(item.id, 'resubmit')}
+                      disabled={busyId === item.id}
+                    >
+                      <Text style={styles.actionText}>Resubmit</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => runAction(item.id, 'duplicate')}
+                    disabled={busyId === item.id}
+                  >
+                    <Text style={styles.actionText}>Duplicate</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => runAction(item.id, 'archive')}
+                    disabled={busyId === item.id}
+                  >
+                    <Text style={styles.actionText}>Archive</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.deleteBtn]}
                     onPress={() => handleDelete(item.id)}
                     disabled={deletingId === item.id}
                   >
@@ -126,7 +220,22 @@ export default function MyListings() {
   );
 }
 
+/** Mirrors the ProductStatus values the API returns. */
+function statusColor(status: string): string {
+  const s = String(status).toUpperCase();
+  if (s === 'PUBLISHED' || s === 'APPROVED') return Colors.success;
+  if (s === 'REJECTED' || s === 'OUT_OF_STOCK') return Colors.error;
+  return Colors.warning;
+}
+
 const styles = StyleSheet.create({
+  stockRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: 4 },
+  stockBtn: {
+    width: 24, height: 24, borderRadius: Radius.sm, borderWidth: 1,
+    borderColor: Colors.border, alignItems: 'center', justifyContent: 'center',
+  },
+  stockBtnText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold, lineHeight: 16 },
+  stockValue: { ...Typography.bodySemibold, fontSize: 13, minWidth: 20, textAlign: 'center' },
   container: {
     flex: 1,
     backgroundColor: Colors.bg,

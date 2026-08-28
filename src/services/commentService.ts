@@ -34,14 +34,14 @@ export const CommentService = {
     if (options?.replyLimit !== undefined) params.set('replyLimit', String(options.replyLimit));
     const query = params.toString();
     const res = await fetchApi<ApiResponse<CommentsData>>(
-      `/api/comments/${postId}${query ? `?${query}` : ''}`,
+      `/comments/${postId}${query ? `?${query}` : ''}`,
       { requiresAuth: true }
     );
     return res.data;
   },
 
   async createComment(postId: number, content: string): Promise<void> {
-    await fetchApi('/api/comments', {
+    await fetchApi('/comments', {
       method: 'POST',
       body: JSON.stringify({ postId, content }),
       requiresAuth: true,
@@ -49,7 +49,7 @@ export const CommentService = {
   },
 
   async replyToComment(postId: number, parentCommentId: string, content: string): Promise<void> {
-    await fetchApi('/api/comments/reply', {
+    await fetchApi('/comments/reply', {
       method: 'POST',
       body: JSON.stringify({ postId, parentCommentId, content }),
       requiresAuth: true,
@@ -57,7 +57,7 @@ export const CommentService = {
   },
 
   async updateComment(commentId: string, content: string): Promise<void> {
-    await fetchApi(`/api/comments/${commentId}`, {
+    await fetchApi(`/comments/${commentId}`, {
       method: 'PUT',
       body: JSON.stringify({ content }),
       requiresAuth: true,
@@ -65,7 +65,7 @@ export const CommentService = {
   },
 
   async deleteComment(commentId: string): Promise<void> {
-    await fetchApi(`/api/comments/${commentId}`, {
+    await fetchApi(`/comments/${commentId}`, {
       method: 'DELETE',
       requiresAuth: true,
     });

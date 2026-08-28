@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { AuthService } from '@/services/authService';
-import { AuthStorage } from '@/services/authStorage';
+import { useUser } from '@/context/AppContext';
 
 function SectionHeader({ title }: { title: string }) {
   return <Text style={styles.sectionHeader}>{title}</Text>;
@@ -31,33 +31,82 @@ function SettingRow({
 }
 
 export default function Settings() {
+  const { user, logout, switchRole } = useUser();
+  const [switching, setSwitching] = useState(false);
   const [pushEnabled, setPushEnabled]     = useState(true);
   const [emailEnabled, setEmailEnabled]   = useState(true);
   const [orderNotifs, setOrderNotifs]     = useState(true);
   const [bookingNotifs, setBookingNotifs] = useState(true);
   const [followNotifs, setFollowNotifs]   = useState(true);
 
-  const [changingPwd, setChangingPwd]     = useState(false);
-  const [currentPwd, setCurrentPwd]       = useState('');
-  const [newPwd, setNewPwd]               = useState('');
-  const [confirmPwd, setConfirmPwd]       = useState('');
   const [pwdLoading, setPwdLoading]       = useState(false);
 
-  const handleChangePassword = useCallback(async () => {
-    if (!currentPwd || !newPwd) { Alert.alert('Error', 'Please fill in all fields'); return; }
-    if (newPwd !== confirmPwd) { Alert.alert('Error', 'New passwords do not match'); return; }
-    if (newPwd.length < 8) { Alert.alert('Error', 'Password must be at least 8 characters'); return; }
-    setPwdLoading(true);
-    try {
-      await AuthService.changePassword(currentPwd, newPwd);
-      Alert.alert('Success', 'Password changed successfully');
-      setChangingPwd(false); setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
-    } catch (e: any) {
-      Alert.alert('Error', e.message ?? 'Failed to change password');
-    } finally {
-      setPwdLoading(false);
+  /**
+   * The API has no change-password endpoint — only forgot-password and
+   * reset-password, which work by emailed link. The screen previously
+   * collected the current and new password and posted them to
+   * /auth/change-password, which does not exist, so every attempt failed
+   * with a network error after the user had typed their credentials.
+   */
+  /**
+   * Role switching.
+   *
+   * The client is not told which roles a user actually holds, so all three
+   * are offered and the server decides — its rejection names the role,
+   * which is more accurate than any list guessed from profile flags.
+   */
+  const handleSwitchRole = useCallback(() => {
+    const roles: Array<'BUYER' | 'ARTIST' | 'ORGANIZER'> = ['BUYER', 'ARTIST', 'ORGANIZER'];
+    const current = String(user.role ?? '').toUpperCase();
+
+    Alert.alert('Switch role', 'Choose how you want to use Paznwise.', [
+      { text: 'Cancel', style: 'cancel' },
+      ...roles
+        .filter(r => r !== current)
+        .map(r => ({
+          text: r.charAt(0) + r.slice(1).toLowerCase(),
+          onPress: async () => {
+            setSwitching(true);
+            try {
+              await switchRole(r);
+              Alert.alert('Switched', `You are now using Paznwise as ${r.toLowerCase()}.`);
+            } catch (e: any) {
+              Alert.alert('Could not switch', e?.message ?? 'Please try again.');
+            } finally {
+              setSwitching(false);
+            }
+          },
+        })),
+    ]);
+  }, [user.role, switchRole]);
+
+  const handleResetPassword = useCallback(() => {
+    if (!user.email) {
+      Alert.alert('No email on file', 'Add an email address to your profile to reset your password.');
+      return;
     }
-  }, [currentPwd, newPwd, confirmPwd]);
+    Alert.alert(
+      'Reset password',
+      `We'll email a reset link to ${user.email}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send link',
+          onPress: async () => {
+            setPwdLoading(true);
+            try {
+              await AuthService.forgotPassword(user.email);
+              Alert.alert('Check your email', 'We have sent you a link to reset your password.');
+            } catch (e: any) {
+              Alert.alert('Could not send link', e?.message ?? 'Please try again.');
+            } finally {
+              setPwdLoading(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [user.email]);
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
@@ -71,8 +120,9 @@ export default function Settings() {
           onPress: async () => {
             try {
               await AuthService.deleteAccount();
-              await AuthStorage.clearTokens();
-              router.replace('/(auth)' as any);
+              // Goes through the context so the session state flips and the
+              // root guard unmounts the authenticated stack.
+              await logout();
             } catch (e: any) {
               Alert.alert('Error', e.message ?? 'Failed to delete account');
             }
@@ -80,7 +130,7 @@ export default function Settings() {
         },
       ]
     );
-  }, []);
+  }, [logout]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -89,12 +139,11 @@ export default function Settings() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          await AuthStorage.clearTokens();
-          router.replace('/(auth)' as any);
+          await logout();
         },
       },
     ]);
-  }, []);
+  }, [logout]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -145,45 +194,17 @@ export default function Settings() {
         <SectionHeader title="Account" />
         <View style={styles.card}>
           <SettingRow
-            icon="🔒" label="Change Password"
-            sublabel="Update your login credentials"
-            onPress={() => setChangingPwd(v => !v)}
+            icon="🔄"
+            label="Switch Role"
+            sublabel={switching ? 'Switching…' : `Currently ${String(user.role ?? 'Buyer').toLowerCase()}`}
+            onPress={handleSwitchRole}
           />
-          {changingPwd && (
-            <View style={styles.pwdForm}>
-              <TextInput
-                style={styles.pwdInput}
-                placeholder="Current password"
-                placeholderTextColor={Colors.creamFaint}
-                secureTextEntry value={currentPwd}
-                onChangeText={setCurrentPwd}
-              />
-              <TextInput
-                style={styles.pwdInput}
-                placeholder="New password"
-                placeholderTextColor={Colors.creamFaint}
-                secureTextEntry value={newPwd}
-                onChangeText={setNewPwd}
-              />
-              <TextInput
-                style={styles.pwdInput}
-                placeholder="Confirm new password"
-                placeholderTextColor={Colors.creamFaint}
-                secureTextEntry value={confirmPwd}
-                onChangeText={setConfirmPwd}
-              />
-              <TouchableOpacity
-                style={styles.pwdBtn}
-                onPress={handleChangePassword}
-                disabled={pwdLoading}
-              >
-                {pwdLoading
-                  ? <ActivityIndicator color={Colors.bg} size="small" />
-                  : <Text style={styles.pwdBtnText}>Update Password</Text>
-                }
-              </TouchableOpacity>
-            </View>
-          )}
+          <View style={styles.rowDivider} />
+          <SettingRow
+            icon="🔒" label="Reset Password"
+            sublabel={pwdLoading ? 'Sending…' : 'We email you a secure reset link'}
+            onPress={handleResetPassword}
+          />
         </View>
 
         {/* Support */}
@@ -193,9 +214,17 @@ export default function Settings() {
           <View style={styles.rowDivider} />
           <SettingRow icon="✉️" label="Contact Us" onPress={() => router.push('/contact' as any)} />
           <View style={styles.rowDivider} />
-          <SettingRow icon="📄" label="Privacy Policy" onPress={() => {}} />
+          <SettingRow
+            icon="📄"
+            label="Privacy Policy"
+            onPress={() => router.push('/legal/privacy-policy' as any)}
+          />
           <View style={styles.rowDivider} />
-          <SettingRow icon="📜" label="Terms of Service" onPress={() => {}} />
+          <SettingRow
+            icon="📜"
+            label="Terms of Service"
+            onPress={() => router.push('/legal/terms-conditions' as any)}
+          />
         </View>
 
         {/* Danger zone */}
@@ -241,16 +270,6 @@ const styles = StyleSheet.create({
   rowSublabel: { ...Typography.caption, fontSize: 12, marginTop: 1 },
   rowChevron: { color: Colors.creamDim, fontSize: 22 },
   rowDivider: { height: 1, backgroundColor: Colors.border, marginLeft: 68 },
-  pwdForm: { paddingHorizontal: Spacing.md, paddingBottom: Spacing.md, gap: Spacing.sm },
-  pwdInput: {
-    backgroundColor: Colors.bgInput, borderWidth: 1, borderColor: Colors.border,
-    borderRadius: Radius.md, padding: Spacing.md, ...Typography.body, fontSize: 14, color: Colors.cream,
-  },
-  pwdBtn: {
-    backgroundColor: Colors.gold, borderRadius: Radius.full,
-    padding: Spacing.md, alignItems: 'center',
-  },
-  pwdBtnText: { ...Typography.bodyBold, fontSize: 14, color: Colors.bg },
   signOutRow: { padding: Spacing.md, alignItems: 'center' },
   signOutText: { ...Typography.bodySemibold, fontSize: 15, color: Colors.gold },
   deleteRow: { padding: Spacing.md, alignItems: 'center' },

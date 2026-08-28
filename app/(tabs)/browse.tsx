@@ -1,19 +1,32 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import ProductCard from '@/components/product/ProductCard';
-import { CATEGORIES } from '@/constants/data';
+import { useCategories, ALL_CATEGORY } from '@/hooks/useTaxonomy';
+import { useDebounced } from '@/hooks/useDebounced';
 import { useMarketplaceProducts } from '@/hooks/useProducts';
 
-const SORT_OPTIONS = ['Newest', 'Price ↑', 'Price ↓'];
+const SORT_OPTIONS = [
+  { label: 'Newest',   value: 'newest' },
+  { label: 'Price ↑',  value: 'price-asc' },
+  { label: 'Price ↓',  value: 'price-desc' },
+  { label: 'Popular',  value: 'popular' },
+  { label: 'Rating',   value: 'rating' },
+] as const;
+
+type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
 export default function Browse() {
-  const [q, setQ]             = useState('');
-  const [activeCategory, setCat] = useState('All');
-  const [sort, setSort]       = useState('Newest');
-  const [showSort, setShowSort] = useState(false);
+  const [q, setQ]               = useState('');
+  const [activeCategory, setCat] = useState(ALL_CATEGORY);
+  const [sort, setSort]          = useState<SortValue>('newest');
+  const [showSort, setShowSort]  = useState(false);
+
+  const { categories } = useCategories();
+  // Typing must not fire a request per keystroke.
+  const debouncedQ = useDebounced(q, 350);
 
   const {
     products,
@@ -21,22 +34,14 @@ export default function Browse() {
     error,
     loadMore,
     refresh,
-  } = useMarketplaceProducts(20, activeCategory === 'All' ? undefined : activeCategory.toLowerCase());
+  } = useMarketplaceProducts(20, {
+    categoryId: activeCategory.id === ALL_CATEGORY.id ? undefined : activeCategory.id,
+    search: debouncedQ || undefined,
+    sort,
+  });
 
-  const filtered = useMemo(() => {
-    let result = products.filter(p => {
-      if (!q) return true;
-      const lower = q.toLowerCase();
-      return (
-        p.title.toLowerCase().includes(lower) ||
-        (p.brand?.toLowerCase() ?? '').includes(lower)
-      );
-    });
-
-    if (sort === 'Price ↑') result = [...result].sort((a, b) => a.price - b.price);
-    else if (sort === 'Price ↓') result = [...result].sort((a, b) => b.price - a.price);
-    return result;
-  }, [products, q, sort]);
+  // Search and sort are applied by the API, so the list is already the result.
+  const filtered = products;
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -45,8 +50,8 @@ export default function Browse() {
           <Text style={styles.title}>Browse Products</Text>
           <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
             <Text style={styles.count}>{filtered.length} items</Text>
-            <TouchableOpacity onPress={() => router.push('/product/marketplace' as any)}>
-              <Text style={styles.marketplaceLink}>Marketplace →</Text>
+            <TouchableOpacity onPress={() => router.push('/discover' as any)}>
+              <Text style={styles.marketplaceLink}>Discover →</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -71,13 +76,15 @@ export default function Browse() {
         {/* Sort dropdown */}
         {showSort && (
           <View style={styles.sortDropdown}>
-            {SORT_OPTIONS.map(s => (
+            {SORT_OPTIONS.map(opt => (
               <TouchableOpacity
-                key={s}
-                style={[styles.sortOption, sort === s && styles.sortOptionActive]}
-                onPress={() => { setSort(s); setShowSort(false); }}
+                key={opt.value}
+                style={[styles.sortOption, sort === opt.value && styles.sortOptionActive]}
+                onPress={() => { setSort(opt.value); setShowSort(false); }}
               >
-                <Text style={[styles.sortOptionText, sort === s && { color: Colors.gold }]}>{s}</Text>
+                <Text style={[styles.sortOptionText, sort === opt.value && { color: Colors.gold }]}>
+                  {opt.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -85,20 +92,21 @@ export default function Browse() {
 
         {/* Category chips */}
         <FlatList
-          data={CATEGORIES}
+          data={categories}
           horizontal showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.catList}
-          keyExtractor={i => i.label}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[styles.catChip, activeCategory === item.label && { backgroundColor: item.color + '22', borderColor: item.color }]}
-              onPress={() => setCat(item.label)}
-            >
-              <Text style={[styles.catText, activeCategory === item.label && { color: item.color }]}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          )}
+          keyExtractor={i => i.id}
+          renderItem={({ item }) => {
+            const active = activeCategory.id === item.id;
+            return (
+              <TouchableOpacity
+                style={[styles.catChip, active && { backgroundColor: item.color + '22', borderColor: item.color }]}
+                onPress={() => setCat(item)}
+              >
+                <Text style={[styles.catText, active && { color: item.color }]}>{item.label}</Text>
+              </TouchableOpacity>
+            );
+          }}
         />
       </SafeAreaView>
 

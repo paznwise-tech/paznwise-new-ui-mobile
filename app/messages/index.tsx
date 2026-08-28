@@ -85,6 +85,9 @@ export default function Messages() {
       .then(list =>
         setSuggestions(
           list.map(u => ({
+            // Suggestions come from the user list, not search, so they are
+            // shaped to match a search hit for the shared row renderer.
+            type: 'user' as const,
             id: u.id,
             name: u.name,
             username: u.username,
