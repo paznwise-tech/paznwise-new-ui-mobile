@@ -67,6 +67,7 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
   ];
 
   const account: MenuItem[] = [
+    { icon: '✦', label: 'Plan & Billing', sub: 'Your plan, limits and usage',    route: '/subscription' },
     { icon: '⚙️', label: 'Settings',       sub: 'Account, privacy & more',        route: '/settings' },
     { icon: '❓', label: 'Help & Support', sub: 'FAQs and contact',               route: '/help' },
   ];

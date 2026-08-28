@@ -21,6 +21,7 @@ import { Colors } from '@/constants/theme';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useUser } from '@/context/AppContext';
 import { queryClient } from '@/api/queryClient';
+import { PaywallSheet } from '@/components/subscription/PaywallSheet';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -118,6 +119,7 @@ function RootNavigator() {
             <Stack.Screen name="rentals/request" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="notifications/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="settings/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="subscription/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="messages/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="messages/[conversationId]" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="network/suggestions" options={{ animation: 'slide_from_right' }} />
@@ -144,6 +146,8 @@ function RootNavigator() {
             <Stack.Screen name="artist/rentals" options={{ animation: 'slide_from_right' }} />
           </Stack.Protected>
         </Stack>
+
+        <PaywallSheet />
 
         {/* Held over the real boot work — validating the stored session —
             rather than an arbitrary timer. */}
