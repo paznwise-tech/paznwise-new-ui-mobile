@@ -96,6 +96,11 @@ export default function Onboarding() {
         <TouchableOpacity style={styles.skip} onPress={() => router.push('/(auth)/login')}>
           <Text style={styles.skipText}>Already have an account? Sign in</Text>
         </TouchableOpacity>
+        {/* The catalogue, feed and events are all readable without a session;
+            gated actions bounce to login at the point they are attempted. */}
+        <TouchableOpacity style={styles.guest} onPress={() => router.replace('/(tabs)')}>
+          <Text style={styles.guestText}>Browse as guest →</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -149,5 +154,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.gold,
   },
   skip: { marginTop: Spacing.md, alignItems: 'center' },
+  guest: { marginTop: Spacing.sm, alignItems: 'center' },
+  guestText: { ...Typography.caption, fontSize: 13, color: Colors.gold },
   skipText: { ...Typography.caption, fontSize: 13, color: Colors.creamDim },
 });

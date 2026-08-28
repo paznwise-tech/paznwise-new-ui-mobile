@@ -125,8 +125,10 @@ export default function Profile() {
   }, [user.role]);
 
   const handleSignOut = useCallback(async () => {
+    // No explicit navigation: logout flips the session to signedOut and the
+    // root layout's guard unmounts the authenticated stack. Replacing here
+    // would race that, targeting a route not yet mounted.
     await logout();
-    router.replace('/(auth)/login');
   }, [logout]);
 
   if (!isLoggedIn) {
@@ -144,7 +146,7 @@ export default function Profile() {
               <Text style={styles.signInText}>Sign In</Text>
             </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/(auth)/signup')}>
+          <TouchableOpacity onPress={() => router.push('/(auth)/request-otp')}>
             <Text style={styles.createText}>Create an account →</Text>
           </TouchableOpacity>
 

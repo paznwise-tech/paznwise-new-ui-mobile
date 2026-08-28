@@ -7,6 +7,7 @@ import { UserService } from '@/services/userService';
 import { FavoritesService } from '@/services/favoritesService';
 import { connectSocket, disconnectSocket } from '@/services/socket';
 import { clearAuthUserIdCache } from '@/services/currentUser';
+import { authEvents } from '@/api/authEvents';
 
 // ─────────────────────────────────────────────────────────
 // Context Type Definitions
@@ -31,8 +32,19 @@ interface BookingsContextType {
   addBooking: (booking: Omit<Booking, 'id' | 'createdAt' | 'status'>) => void;
 }
 
+/**
+ * Session lifecycle.
+ *
+ * `loading` is the boot window while a stored token is validated — the
+ * root layout holds the splash over it, and route guards must not act
+ * until it resolves or a returning user is bounced to the auth stack
+ * before their session is known.
+ */
+export type SessionStatus = 'loading' | 'signedIn' | 'signedOut';
+
 interface UserContextType {
   user: UserProfile & { isLoggedIn: boolean };
+  status: SessionStatus;
   updateUserProfile: (profile: Partial<UserProfile>) => void;
   deleteProfile: () => void;
   followUser: (id: string) => void;
@@ -102,16 +114,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isLoggedIn: false,
   });
 
+  const [status, setStatus] = useState<SessionStatus>('loading');
+
   const updateUserProfile = useCallback((profile: Partial<UserProfile>) => {
     setUser(prev => ({ ...prev, ...profile }));
   }, []);
 
   const login = useCallback((name: string, email: string) => {
     setUser(prev => ({ ...prev, name, email, isLoggedIn: true }));
+    setStatus('signedIn');
   }, []);
 
   const loginWithProfile = useCallback((profile: Partial<UserProfile>) => {
     setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+    setStatus('signedIn');
     connectSocket().catch(() => {}); // open real-time connection on fresh login
   }, []);
 
@@ -119,22 +135,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const profile = await UserService.getMyProfile();
       setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
+      setStatus('signedIn');
       connectSocket().catch(() => {}); // open real-time connection once authenticated
-      // Sync wishlist from backend
+      // Sync saved artworks from the backend
       FavoritesService.getFavorites()
         .then(items => setFavorites(items.map(i => i.id)))
         .catch(() => {});
     } catch (e) {
       console.warn('[AppContext] loadProfile failed:', e);
+      throw e;
     }
   }, []);
 
-  // Restore session on app start if a stored token exists
+  /**
+   * Boot: a stored token is only a claim, so it is validated against the
+   * profile endpoint before the session counts as signed in. A 401 here
+   * has already been through the client's refresh attempt, so failure is
+   * final and the token is dropped.
+   */
   useEffect(() => {
-    AuthStorage.getAccessToken().then(token => {
-      if (token) loadProfile();
-    });
+    let cancelled = false;
+
+    AuthStorage.getAccessToken()
+      .then(async token => {
+        if (!token) return;
+        try {
+          await loadProfile();
+        } catch {
+          await AuthStorage.clearTokens();
+          clearAuthUserIdCache();
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setStatus(prev => (prev === 'loading' ? 'signedOut' : prev));
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadProfile]);
+
+  /**
+   * A refresh that fails mid-session is reported by the HTTP client, which
+   * sits below React and cannot reach this state directly.
+   */
+  useEffect(
+    () =>
+      authEvents.on('signed-out', () => {
+        disconnectSocket();
+        setUser(prev => ({ ...prev, isLoggedIn: false }));
+        setStatus('signedOut');
+      }),
+    [],
+  );
 
   const deleteProfile = useCallback(() => {
     setUser(prev => ({ ...prev, isLoggedIn: false }));
@@ -161,13 +214,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clearAuthUserIdCache();
       await AuthStorage.clearTokens();
       setUser(prev => ({ ...prev, isLoggedIn: false }));
+      setStatus('signedOut');
     }
   }, []);
 
+  /** Re-reads the profile from the server, e.g. after a role switch. */
   const refreshSession = useCallback(() => {
-    // Mock refreshing token
-    console.log('Session refreshed');
-  }, []);
+    loadProfile().catch(() => {});
+  }, [loadProfile]);
 
   // ── Cart state ──────────────────────────────────────────
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -382,7 +436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cartValue = useMemo(() => ({ cart, addToCart, removeFromCart, clearCart, cartTotal }), [cart, addToCart, removeFromCart, clearCart, cartTotal]);
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
   const bookingsValue = useMemo(() => ({ bookings, addBooking }), [bookings, addBooking]);
-  const userValue = useMemo(() => ({ user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession }), [user, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession]);
+  const userValue = useMemo(() => ({ user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession }), [user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession]);
   const appDataValue = useMemo(() => ({ artworks, performers, addArtwork, addPerformer }), [artworks, performers, addArtwork, addPerformer]);
   const feedValue = useMemo(() => ({
     feedPosts, trendingPosts, followingPosts, feedLoading, feedError,

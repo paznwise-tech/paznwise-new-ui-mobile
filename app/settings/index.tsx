@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { AuthService } from '@/services/authService';
-import { AuthStorage } from '@/services/authStorage';
+import { useUser } from '@/context/AppContext';
 
 function SectionHeader({ title }: { title: string }) {
   return <Text style={styles.sectionHeader}>{title}</Text>;
@@ -31,6 +31,7 @@ function SettingRow({
 }
 
 export default function Settings() {
+  const { logout } = useUser();
   const [pushEnabled, setPushEnabled]     = useState(true);
   const [emailEnabled, setEmailEnabled]   = useState(true);
   const [orderNotifs, setOrderNotifs]     = useState(true);
@@ -71,8 +72,9 @@ export default function Settings() {
           onPress: async () => {
             try {
               await AuthService.deleteAccount();
-              await AuthStorage.clearTokens();
-              router.replace('/(auth)' as any);
+              // Goes through the context so the session state flips and the
+              // root guard unmounts the authenticated stack.
+              await logout();
             } catch (e: any) {
               Alert.alert('Error', e.message ?? 'Failed to delete account');
             }
@@ -80,7 +82,7 @@ export default function Settings() {
         },
       ]
     );
-  }, []);
+  }, [logout]);
 
   const handleSignOut = useCallback(() => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -89,12 +91,11 @@ export default function Settings() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          await AuthStorage.clearTokens();
-          router.replace('/(auth)' as any);
+          await logout();
         },
       },
     ]);
-  }, []);
+  }, [logout]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
