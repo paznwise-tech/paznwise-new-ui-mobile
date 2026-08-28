@@ -43,7 +43,6 @@ export default function RootLayout() {
     let timer: any;
     
     AuthStorage.getAccessToken().then(async token => {
-      console.log('🔑 ACCESS TOKEN:', token);
       await SplashScreen.hideAsync();
       
       // Let our premium Lottie splash animation play for 3 seconds before transitioning

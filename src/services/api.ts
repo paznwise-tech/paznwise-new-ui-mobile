@@ -1,91 +1,19 @@
-import { AuthStorage } from './authStorage';
+// ─────────────────────────────────────────────────────────
+// Back-compat shim.
+//
+// The real HTTP layer now lives in src/api/client.ts and its configuration
+// in src/config/env.ts. This file stays only so the existing service files
+// keep compiling while they are migrated onto `apiClient` domain by domain.
+//
+// New code should import from '@/api/client' and '@/config/env' directly.
+// ─────────────────────────────────────────────────────────
 
-// Base URL for the API
-export const API_BASE_URL = 'https://paznwise.gujberry.com';
+import { apiBaseUrl, mediaBaseUrl } from '@/config/env';
 
-// Base URL for uploaded media (avatars, product/chat images) stored on S3.
-// Relative keys like "users/<id>/avatar.jpg" resolve against this.
-export const MEDIA_BASE_URL = 'https://bucket-6ywfl4.s3.ap-south-1.amazonaws.com';
+export { fetchApi } from '@/api/client';
 
-interface FetchOptions extends RequestInit {
-  requiresAuth?: boolean;
-  authToken?: string; // explicit token override (e.g. registrationToken for signup)
-}
+/** @deprecated import `apiBaseUrl` from '@/config/env' */
+export const API_BASE_URL = apiBaseUrl;
 
-export async function fetchApi<T>(
-  endpoint: string,
-  options: FetchOptions = {}
-): Promise<T> {
-  const { requiresAuth = true, authToken, headers, ...restOptions } = options;
-
-  const requestHeaders = new Headers(headers);
-
-  if (!requestHeaders.has('Accept')) {
-    requestHeaders.set('Accept', 'application/json');
-  }
-
-  if (!(options.body instanceof FormData) && !requestHeaders.has('Content-Type')) {
-    requestHeaders.set('Content-Type', 'application/json');
-  }
-
-  if (authToken) {
-    requestHeaders.set('Authorization', `Bearer ${authToken}`);
-  } else if (requiresAuth) {
-    const token = await AuthStorage.getAccessToken();
-    if (token) {
-      requestHeaders.set('Authorization', `Bearer ${token}`);
-    } else {
-      console.warn('API call requires auth but no token found in storage.');
-    }
-  }
-
-  const url = `${API_BASE_URL}${endpoint}`;
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
-
-  try {
-    const response = await fetch(url, {
-      ...restOptions,
-      headers: requestHeaders,
-      signal: controller.signal,
-    });
-    clearTimeout(timeoutId);
-
-    const isJson = response.headers.get('content-type')?.includes('application/json');
-    const data = isJson ? await response.json() : await response.text();
-
-    if (!response.ok) {
-      const message =
-        typeof data === 'object' && data !== null
-          ? data.message || data.error || `Request failed (${response.status})`
-          : (data as string) || `Request failed (${response.status})`;
-      const error: any = new Error(message);
-      error.status = response.status;
-      error.data = data;
-
-      console.log(`\n[API Error Response] ${options.method || 'GET'} ${endpoint} - Status: ${response.status}`);
-      console.log(JSON.stringify(data, null, 2));
-
-      throw error;
-    }
-
-    console.log(`\n[API Success Response] ${options.method || 'GET'} ${endpoint}`);
-    if (typeof data === 'object' && data !== null) {
-      console.log(JSON.stringify(data, null, 2));
-    } else {
-      console.log(data);
-    }
-
-    return data as T;
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      const timeoutErr = new Error('Request timed out. Please check your connection and try again.');
-      console.warn(`[API Timeout] ${options.method || 'GET'} ${endpoint}`);
-      throw timeoutErr;
-    }
-    console.warn(`[API Error] ${options.method || 'GET'} ${endpoint}:`, error);
-    throw error;
-  }
-}
+/** @deprecated import `mediaBaseUrl` from '@/config/env' */
+export const MEDIA_BASE_URL = mediaBaseUrl;
