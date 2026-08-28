@@ -8,7 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { BookingService } from '@/services/bookingService';
 import { ArtistServiceApi } from '@/services/artistService';
-import { Booking, Performer } from '@/types';
+import type { ServiceBooking } from '@/services/bookingService';
+import { Performer } from '@/types';
 
 const STATUS_COLORS: Record<string, string> = {
   confirmed: Colors.success,
@@ -28,14 +29,14 @@ function StatCard({ icon, label, value }: { icon: string; label: string; value: 
 }
 
 export default function ArtistDashboard() {
-  const [bookings, setBookings]     = useState<Booking[]>([]);
+  const [bookings, setBookings]     = useState<ServiceBooking[]>([]);
   const [services, setServices]     = useState<Array<Performer & { serviceId: string }>>([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const [bookingsRes, servicesRes] = await Promise.allSettled([
-      BookingService.getMyBookings(),
+      BookingService.getIncomingBookings(),
       ArtistServiceApi.getServices({ limit: 50 }),
     ]);
     if (bookingsRes.status === 'fulfilled') setBookings(bookingsRes.value);
@@ -50,22 +51,27 @@ export default function ArtistDashboard() {
   }, [load]);
 
   const totalBookings = bookings.length;
-  const pending = bookings.filter(b => b.status === 'pending').length;
-  const completed = bookings.filter(b => b.status === 'completed').length;
+  const pending = bookings.filter(b => b.status === 'PENDING').length;
+  const completed = bookings.filter(b => b.status === 'COMPLETED').length;
 
-  const renderBooking = useCallback(({ item }: { item: Booking }) => {
+  const renderBooking = useCallback(({ item }: { item: ServiceBooking }) => {
     const color = STATUS_COLORS[item.status] ?? Colors.warning;
     return (
       <View style={styles.bookingCard}>
         <View style={styles.bookingHeader}>
-          <Text style={styles.bookingName}>{item.performerName}</Text>
+          <Text style={styles.bookingName}>{item.service?.title ?? 'Service booking'}</Text>
           <View style={[styles.statusBadge, { backgroundColor: color + '22', borderColor: color }]}>
             <Text style={[styles.statusText, { color }]}>{item.status}</Text>
           </View>
         </View>
-        {item.date ? <Text style={styles.bookingMeta}>📅 {item.date}</Text> : null}
-        {item.eventDetails ? <Text style={styles.bookingMeta}>📍 {item.eventDetails}</Text> : null}
-        {item.price ? <Text style={styles.bookingPrice}>{item.price}</Text> : null}
+        {item.bookingDate ? (
+          <Text style={styles.bookingMeta}>
+            📅 {new Date(item.bookingDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            {item.startTime ? ` · ${item.startTime}–${item.endTime}` : ''}
+          </Text>
+        ) : null}
+        {item.address ? <Text style={styles.bookingMeta}>📍 {item.address}</Text> : null}
+        <Text style={styles.bookingPrice}>₹{item.totalAmount.toLocaleString('en-IN')}</Text>
       </View>
     );
   }, []);

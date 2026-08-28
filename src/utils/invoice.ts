@@ -5,18 +5,18 @@ import { AuthStorage } from '@/services/authStorage';
 import { orderService } from '@/services/orderService';
 
 /**
- * Downloads an order invoice and hands it to the system share sheet.
+ * Downloads an authenticated PDF and hands it to the system share sheet.
  *
- * The endpoint is behind `authenticate`, so the PDF cannot be opened with a
- * plain link — the request has to carry the Bearer token. It is fetched to
- * the cache directory first, then shared, which is also what lets the user
- * save it or send it on.
+ * These endpoints sit behind `authenticate`, so the file cannot be opened
+ * with a plain link — the request has to carry the Bearer token. It is
+ * fetched to the cache directory first, then shared, which is also what
+ * lets the user save it or send it on.
  */
-export async function downloadInvoice(orderId: string | number): Promise<void> {
+export async function downloadFileWithAuth(url: string, fileName: string): Promise<void> {
   const token = await AuthStorage.getAccessToken();
-  if (!token) throw new Error('Please sign in again to download this invoice.');
+  if (!token) throw new Error('Please sign in again to download this file.');
 
-  const target = new File(Paths.cache, `paznwise-invoice-${orderId}.pdf`);
+  const target = new File(Paths.cache, fileName);
   // A stale file from a previous attempt would be shared instead of the
   // fresh download, so clear it first.
   try {
@@ -25,18 +25,22 @@ export async function downloadInvoice(orderId: string | number): Promise<void> {
     // Non-fatal: the download below overwrites or fails loudly on its own.
   }
 
-  const file = await File.downloadFileAsync(orderService.invoiceUrl(orderId), target, {
+  const file = await File.downloadFileAsync(url, target, {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf' },
   });
 
   if (!(await Sharing.isAvailableAsync())) {
-    Alert.alert('Invoice saved', `Saved to ${file.uri}`);
+    Alert.alert('Saved', `Saved to ${file.uri}`);
     return;
   }
 
   await Sharing.shareAsync(file.uri, {
     mimeType: 'application/pdf',
-    dialogTitle: 'Invoice',
+    dialogTitle: 'Document',
     UTI: 'com.adobe.pdf',
   });
+}
+
+export function downloadInvoice(orderId: string | number): Promise<void> {
+  return downloadFileWithAuth(orderService.invoiceUrl(orderId), `paznwise-invoice-${orderId}.pdf`);
 }

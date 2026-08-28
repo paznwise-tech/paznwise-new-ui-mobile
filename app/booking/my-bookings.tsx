@@ -1,23 +1,40 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { BookingService } from '@/services/bookingService';
-import { Booking } from '@/types';
+import {
+  BookingService, CANCELLABLE_BOOKING_STATUSES,
+  type ServiceBooking, type ServiceBookingStatus,
+} from '@/services/bookingService';
 
 const STATUS_COLORS: Record<string, string> = {
-  confirmed: '#4CAF7D',
-  pending:   '#F6A723',
-  completed: Colors.gold,
-  cancelled: '#E05252',
+  CONFIRMED: '#4CAF7D',
+  ACCEPTED:  '#4CAF7D',
+  PENDING:   '#F6A723',
+  COMPLETED: Colors.gold,
+  CANCELLED: '#E05252',
+  DECLINED:  '#E05252',
 };
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${d.getFullYear()}`;
+}
+
+function statusLabel(s: ServiceBookingStatus): string {
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
 
 const TABS = ['All', 'Upcoming', 'Completed'];
 
 export default function MyBookings() {
-  const [bookings, setBookings]   = useState<Booking[]>([]);
+  const [bookings, setBookings]   = useState<ServiceBooking[]>([]);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab]             = useState('All');
@@ -42,40 +59,88 @@ export default function MyBookings() {
 
   const filtered = useMemo(() => {
     return bookings.filter(b => {
-      if (tab === 'Upcoming')  return b.status === 'confirmed' || b.status === 'pending';
-      if (tab === 'Completed') return b.status === 'completed';
+      if (tab === 'Upcoming')  return ['PENDING', 'ACCEPTED', 'CONFIRMED'].includes(b.status);
+      if (tab === 'Completed') return b.status === 'COMPLETED';
       return true;
     });
   }, [bookings, tab]);
 
-  const renderBookingItem = useCallback(({ item }: { item: Booking }) => (
-    <TouchableOpacity style={styles.card} activeOpacity={0.85}>
-      {item.performerImg ? (
-        <Image source={{ uri: item.performerImg }} style={styles.cardImg} contentFit="cover" transition={300} />
+  const handleCancel = useCallback((booking: ServiceBooking) => {
+    Alert.alert('Cancel booking', `Cancel your booking with ${booking.artist?.name ?? 'this artist'}?`, [
+      { text: 'Keep booking', style: 'cancel' },
+      {
+        text: 'Cancel booking',
+        style: 'destructive',
+        onPress: async () => {
+          setCancellingId(booking.id);
+          try {
+            await BookingService.cancelBooking(booking.id);
+            await load();
+          } catch (e: any) {
+            Alert.alert('Could not cancel', e?.message ?? 'Please try again.');
+          } finally {
+            setCancellingId(null);
+          }
+        },
+      },
+    ]);
+  }, [load]);
+
+  const renderBookingItem = useCallback(({ item }: { item: ServiceBooking }) => {
+    const color = STATUS_COLORS[item.status] ?? Colors.gold;
+    const canCancel = CANCELLABLE_BOOKING_STATUSES.includes(item.status);
+
+    return (
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.85}
+      onPress={() => router.push(`/booking/detail/${item.id}` as any)}
+    >
+      {item.artist?.avatar || item.service?.bannerImage ? (
+        <Image
+          source={{ uri: (item.artist?.avatar ?? item.service?.bannerImage)! }}
+          style={styles.cardImg}
+          contentFit="cover"
+          transition={300}
+        />
       ) : (
         <View style={[styles.cardImg, { backgroundColor: Colors.bgCard }]} />
       )}
       <View style={styles.cardBody}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>{item.performerName}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[item.status] + '22', borderColor: STATUS_COLORS[item.status] }]}>
-            <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>{item.status}</Text>
+          <Text style={styles.cardTitle}>{item.artist?.name ?? item.service?.title ?? 'Artist'}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: color + '22', borderColor: color }]}>
+            <Text style={[styles.statusText, { color }]}>{statusLabel(item.status)}</Text>
           </View>
         </View>
-        {item.performerType ? <Text style={styles.cardType}>{item.performerType}</Text> : null}
+        {item.service?.title ? <Text style={styles.cardType}>{item.service.title}</Text> : null}
         <View style={styles.cardMeta}>
-          {item.date ? <Text style={styles.cardMetaText}>📅 {item.date}</Text> : null}
-          {item.eventDetails ? <Text style={styles.cardMetaText} numberOfLines={1}>📍 {item.eventDetails}</Text> : null}
+          {item.bookingDate ? (
+            <Text style={styles.cardMetaText}>
+              📅 {formatDate(item.bookingDate)} · {item.startTime}–{item.endTime}
+            </Text>
+          ) : null}
+          {item.address ? <Text style={styles.cardMetaText} numberOfLines={1}>📍 {item.address}</Text> : null}
         </View>
+        {item.artistDeclineReason ? (
+          <Text style={styles.declineReason}>Declined: {item.artistDeclineReason}</Text>
+        ) : null}
         <View style={styles.cardFooter}>
-          {item.price ? <Text style={styles.cardTotal}>{item.price}</Text> : <View />}
-          <TouchableOpacity style={styles.viewBtn}>
+          <Text style={styles.cardTotal}>₹{item.totalAmount.toLocaleString('en-IN')}</Text>
+          {canCancel ? (
+            <TouchableOpacity onPress={() => handleCancel(item)} disabled={cancellingId === item.id}>
+              <Text style={styles.cancelBtnText}>
+                {cancellingId === item.id ? 'Cancelling…' : 'Cancel'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
             <Text style={styles.viewBtnText}>View details →</Text>
-          </TouchableOpacity>
+          )}
         </View>
       </View>
     </TouchableOpacity>
-  ), []);
+    );
+  }, [handleCancel, cancellingId]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -128,6 +193,8 @@ export default function MyBookings() {
 }
 
 const styles = StyleSheet.create({
+  cancelBtnText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.error },
+  declineReason: { ...Typography.caption, fontSize: 12, color: Colors.error, marginTop: 4 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
   backIcon: { color: Colors.gold, fontSize: 22 },
   title: { ...Typography.display, fontSize: 22 },

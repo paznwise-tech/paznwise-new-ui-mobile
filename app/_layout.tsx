@@ -129,6 +129,7 @@ function RootNavigator() {
             <Stack.Screen name="event-bookings/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="booking/[id]" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="booking/my-bookings" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="booking/detail/[id]" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="booking/confirmed" options={{ animation: 'fade' }} />
             <Stack.Screen name="sell/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="sell/terms" options={{ animation: 'slide_from_right' }} />
