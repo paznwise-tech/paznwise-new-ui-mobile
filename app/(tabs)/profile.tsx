@@ -8,6 +8,7 @@ import { useUser } from '@/context/AppContext';
 import { useCallback, useMemo, useEffect, useState } from 'react';
 import { MessageService } from '@/services/messageService';
 import { FullPhotoModal } from '@/components/ui/FullPhotoModal';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 
 interface MenuItem {
   icon: string;
@@ -174,6 +175,9 @@ export default function Profile() {
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }} />
+      <View style={styles.topBar}>
+        <NotificationBell />
+      </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Profile header */}
         <LinearGradient colors={['#1C2F45', Colors.bg]} style={styles.profileHeader}>
@@ -304,6 +308,7 @@ const styles = StyleSheet.create({
   stat: { alignItems: 'center' },
   statVal: { ...Typography.bodyBold, fontSize: 18, color: Colors.gold },
   statLabel: { ...Typography.caption, fontSize: 11 },
+  topBar: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: Spacing.md, paddingBottom: Spacing.xs },
   menu: { paddingHorizontal: Spacing.md, paddingTop: Spacing.xs, gap: 2 },
   menuSectionTitle: {
     ...Typography.label,

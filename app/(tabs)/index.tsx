@@ -10,6 +10,7 @@ import ProductCard from '@/components/product/ProductCard';
 import { PerformerCard } from '@/components/artist/PerformerCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { BrandLogo } from '@/components/ui/BrandLogo';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 import { useCategories, useHeroSlides } from '@/hooks/useTaxonomy';
 import type { HeroSlide, Category } from '@/services/taxonomyService';
 import { useCart, useUser, useFeed } from '@/context/AppContext';
@@ -273,6 +274,7 @@ export default function Home() {
             <BrandLogo size={28} />
           </View>
           <View style={styles.headerRight}>
+            <NotificationBell />
             <TouchableOpacity style={styles.searchBtn} onPress={() => router.push('/(tabs)/browse')}>
               <Text style={styles.searchIcon}>🔍</Text>
             </TouchableOpacity>

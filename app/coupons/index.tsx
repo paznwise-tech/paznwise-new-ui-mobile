@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, Clipboard, Alert,
+  ActivityIndicator, RefreshControl, Alert,
 } from 'react-native';
 import { router } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { CouponService, Coupon } from '@/services/couponService';
@@ -40,10 +41,14 @@ export default function Coupons() {
     load().finally(() => setRefreshing(false));
   }, [load]);
 
-  const handleCopy = useCallback((code: string) => {
-    Clipboard.setString(code);
-    setCopied(code);
-    setTimeout(() => setCopied(null), 2000);
+  const handleCopy = useCallback(async (code: string) => {
+    try {
+      await Clipboard.setStringAsync(code);
+      setCopied(code);
+      setTimeout(() => setCopied(null), 2000);
+    } catch {
+      Alert.alert('Could not copy', `Coupon code: ${code}`);
+    }
   }, []);
 
   const renderItem = useCallback(({ item }: { item: Coupon }) => {

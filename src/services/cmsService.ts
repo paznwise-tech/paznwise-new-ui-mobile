@@ -25,6 +25,26 @@ export const CMS_SLUGS = {
   helpCenter: 'help-center',
 } as const;
 
+export interface Faq {
+  id: number;
+  question: string;
+  answer: string;
+}
+
+export const FaqService = {
+  /** Active FAQs — `GET /faqs`, public. The model has no category field. */
+  async getFaqs(): Promise<Faq[]> {
+    const res = await fetchApi<any>('/faqs', { requiresAuth: false });
+    const data = res?.data ?? res;
+    const list: any[] = Array.isArray(data) ? data : (data?.faqs ?? data?.items ?? []);
+    return list.map((f: any) => ({
+      id: Number(f.id),
+      question: f.question ?? '',
+      answer: f.answer ?? '',
+    }));
+  },
+};
+
 export const CmsService = {
   async getPage(slug: string): Promise<CmsPage> {
     const res = await fetchApi<any>(`/cms/${slug}`, { requiresAuth: false });
