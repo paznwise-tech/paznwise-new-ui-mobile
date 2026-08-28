@@ -1,317 +1,277 @@
-import React, { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  RefreshControl,
-  Alert,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  ActivityIndicator, Alert, RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { rentalService, type RentalBookingItem } from '@/services/rentalService';
+import {
+  rentalService, rentalStatusLabel,
+  type RentalBookingItem, type DepositStatus,
+} from '@/services/rentalService';
 
-export default function RentalRequestsScreen() {
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [rentals, setRentals] = useState<RentalBookingItem[]>([]);
+const STATUS_COLORS: Record<string, string> = {
+  PENDING: Colors.warning, ACCEPTED: Colors.success, DISPATCHED: Colors.gold,
+  RETURNED: Colors.gold, COMPLETED: Colors.success,
+  DECLINED: Colors.error, CANCELLED: Colors.error,
+};
 
-  useEffect(() => {
-    fetchRentals();
+const DEPOSIT_CHOICES: Array<{ value: DepositStatus; label: string }> = [
+  { value: 'REFUNDED',            label: 'Refund in full' },
+  { value: 'PARTIALLY_REFUNDED',  label: 'Partial refund' },
+  { value: 'FORFEITED',           label: 'Withhold deposit' },
+];
+
+/**
+ * Rental requests for the artist's own artwork.
+ *
+ * The whole lifecycle lives here: accept or decline, dispatch, record the
+ * return, and settle the deposit. Only accept and decline were wired
+ * before, so an accepted rental could never progress — the artwork could
+ * be lent out and never marked returned, and the deposit never released.
+ */
+export default function ArtistRentals() {
+  const qc = useQueryClient();
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const { data: rentals = [], isLoading, isRefetching, refetch } = useQuery({
+    queryKey: ['incoming-rentals'],
+    queryFn: rentalService.getIncomingRentals,
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ['incoming-rentals'] });
+
+  /** Both dispatch and return require at least one photo server-side. */
+  const capturePhotos = useCallback(async (): Promise<Array<{ uri: string; name: string }> | null> => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to attach a condition report.');
+      return null;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], quality: 0.7, allowsMultipleSelection: true, selectionLimit: 6,
+    });
+    if (res.canceled || res.assets.length === 0) return null;
+    return res.assets.map((a, i) => ({ uri: a.uri, name: `condition-${i}.jpg` }));
   }, []);
 
-  const fetchRentals = async () => {
+  const runWithPhotos = useCallback(async (
+    booking: RentalBookingItem,
+    action: 'dispatch' | 'return',
+  ) => {
+    const photos = await capturePhotos();
+    if (!photos) return;
+
+    setBusyId(booking.id);
     try {
-      const data = await rentalService.getIncomingRentals();
-      setRentals(data);
-    } catch (err: any) {
-      console.warn('[RentalRequests] Error fetching rentals:', err.message);
+      if (action === 'dispatch') await rentalService.dispatchRental(booking.id, photos);
+      else await rentalService.returnRental(booking.id, photos);
+      refresh();
+    } catch (e: any) {
+      Alert.alert('Could not update', e?.message ?? 'Please try again.');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setBusyId(null);
     }
-  };
+  }, [capturePhotos, qc]);
 
-  const handleRefresh = () => {
-    setRefreshing(true);
-    fetchRentals();
-  };
-
-  const handleAccept = async (id: string) => {
+  const handleAccept = useCallback(async (booking: RentalBookingItem) => {
+    setBusyId(booking.id);
     try {
-      await rentalService.acceptRental(id);
-      Alert.alert('Rental Accepted', 'Rental request has been approved.');
-      fetchRentals();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to accept rental');
+      await rentalService.acceptRental(booking.id);
+      refresh();
+    } catch (e: any) {
+      Alert.alert('Could not accept', e?.message ?? 'Please try again.');
+    } finally {
+      setBusyId(null);
     }
-  };
+  }, [qc]);
 
-  const handleDecline = async (id: string) => {
-    try {
-      await rentalService.declineRental(id);
-      Alert.alert('Rental Declined', 'Rental request declined.');
-      fetchRentals();
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to decline rental');
-    }
-  };
+  const handleDecline = useCallback((booking: RentalBookingItem) => {
+    const decline = async (reason: string) => {
+      setBusyId(booking.id);
+      try {
+        await rentalService.declineRental(booking.id, reason);
+        refresh();
+      } catch (e: any) {
+        Alert.alert('Could not decline', e?.message ?? 'Please try again.');
+      } finally {
+        setBusyId(null);
+      }
+    };
+    Alert.alert('Decline request', 'The renter will see your reason.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Not available', onPress: () => decline('Artwork not available for those dates') },
+      { text: 'Too fragile', onPress: () => decline('This piece is not suitable for transport') },
+      { text: 'Other', onPress: () => decline('Unable to fulfil this request') },
+    ]);
+  }, [qc]);
 
-  const renderRentalItem = ({ item }: { item: RentalBookingItem }) => {
-    const isPending = item.status === 'PENDING';
-    const startDate = new Date(item.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const endDate = new Date(item.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const handleComplete = useCallback((booking: RentalBookingItem) => {
+    // Settling the deposit is the artist's judgement based on the condition
+    // report, so the choice is explicit rather than defaulted.
+    Alert.alert('Settle deposit', 'How should the security deposit be handled?', [
+      { text: 'Cancel', style: 'cancel' },
+      ...DEPOSIT_CHOICES.map(choice => ({
+        text: choice.label,
+        onPress: async () => {
+          setBusyId(booking.id);
+          try {
+            await rentalService.completeRental(booking.id, { depositStatus: choice.value });
+            refresh();
+          } catch (e: any) {
+            Alert.alert('Could not complete', e?.message ?? 'Please try again.');
+          } finally {
+            setBusyId(null);
+          }
+        },
+      })),
+    ]);
+  }, [qc]);
+
+  const renderItem = useCallback(({ item }: { item: RentalBookingItem }) => {
+    const color = STATUS_COLORS[item.status] ?? Colors.gold;
+    const busy = busyId === item.id;
 
     return (
       <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Text style={styles.refText}>Ref #{item.bookingRef || item.id}</Text>
-          <View style={[styles.statusBadge, getStatusStyle(item.status)]}>
-            <Text style={styles.statusText}>{item.status}</Text>
-          </View>
-        </View>
-
-        <View style={styles.bodyRow}>
+        <View style={styles.head}>
           {item.product?.thumbnailUrl ? (
-            <Image source={{ uri: item.product.thumbnailUrl }} style={styles.artworkImg} />
+            <Image source={{ uri: item.product.thumbnailUrl }} style={styles.thumb} contentFit="cover" />
           ) : (
-            <View style={[styles.artworkImg, { backgroundColor: Colors.bgInput }]} />
+            <View style={[styles.thumb, { backgroundColor: Colors.bgInput }]} />
           )}
-
           <View style={{ flex: 1 }}>
-            <Text style={styles.productTitle}>{item.product?.title || 'Rented Artwork'}</Text>
-            <Text style={styles.durationText}>🗓️ {startDate} – {endDate} ({item.days || 1} days)</Text>
-            <Text style={styles.amountText}>Payout: ₹{(Number(item.rentalAmount) || 0).toLocaleString('en-IN')}</Text>
+            <Text style={styles.title} numberOfLines={1}>{item.product?.title ?? 'Artwork'}</Text>
+            <Text style={styles.meta}>
+              {new Date(item.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              {' – '}
+              {new Date(item.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              {' · '}{item.days} day{item.days === 1 ? '' : 's'}
+            </Text>
+          </View>
+          <View style={[styles.badge, { borderColor: color, backgroundColor: color + '18' }]}>
+            <Text style={[styles.badgeText, { color }]}>{rentalStatusLabel(item.status)}</Text>
           </View>
         </View>
 
-        {isPending && (
-          <View style={styles.actionRow}>
-            <TouchableOpacity
-              style={[styles.btn, styles.declineBtn]}
-              onPress={() => handleDecline(item.id)}
-            >
-              <Text style={styles.declineText}>Decline</Text>
+        <View style={styles.amounts}>
+          <Text style={styles.amount}>₹{Number(item.rentalAmount).toLocaleString('en-IN')}</Text>
+          {item.securityDeposit != null && (
+            <Text style={styles.deposit}>
+              + ₹{Number(item.securityDeposit).toLocaleString('en-IN')} deposit
+            </Text>
+          )}
+        </View>
+
+        {item.address ? <Text style={styles.meta} numberOfLines={1}>📍 {item.address}</Text> : null}
+
+        {/* Actions follow the server's state machine exactly: dispatch is
+            only valid from ACCEPTED, return only from DISPATCHED. */}
+        <View style={styles.actions}>
+          {item.status === 'PENDING' && (
+            <>
+              <TouchableOpacity onPress={() => handleDecline(item)} disabled={busy}>
+                <Text style={styles.decline}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleAccept(item)} disabled={busy}>
+                <Text style={styles.primary}>{busy ? 'Working…' : 'Accept'}</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {item.status === 'ACCEPTED' && (
+            <TouchableOpacity onPress={() => runWithPhotos(item, 'dispatch')} disabled={busy}>
+              <Text style={styles.primary}>{busy ? 'Uploading…' : 'Dispatch with photos'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.btn, styles.acceptBtn]}
-              onPress={() => handleAccept(item.id)}
-            >
-              <Text style={styles.acceptText}>Accept Request</Text>
+          )}
+          {item.status === 'DISPATCHED' && (
+            <TouchableOpacity onPress={() => runWithPhotos(item, 'return')} disabled={busy}>
+              <Text style={styles.primary}>{busy ? 'Uploading…' : 'Mark returned'}</Text>
             </TouchableOpacity>
-          </View>
-        )}
+          )}
+          {item.status === 'RETURNED' && (
+            <TouchableOpacity onPress={() => handleComplete(item)} disabled={busy}>
+              <Text style={styles.primary}>{busy ? 'Working…' : 'Settle deposit'}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
-  };
+  }, [busyId, handleAccept, handleDecline, handleComplete, runWithPhotos]);
 
   return (
-    <SafeAreaView edges={['top']} style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>←</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rental Requests</Text>
-        <View style={{ width: 36 }} />
-      </View>
-
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={Colors.gold} />
-          <Text style={styles.loadingText}>Loading Rental Requests...</Text>
+    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+      <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.backIcon}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Rental Requests</Text>
+          <View style={{ width: 24 }} />
         </View>
+      </SafeAreaView>
+
+      {isLoading ? (
+        <View style={styles.center}><ActivityIndicator color={Colors.gold} size="large" /></View>
       ) : (
         <FlatList
           data={rentals}
-          keyExtractor={(item) => item.id}
-          renderItem={renderRentalItem}
-          contentContainerStyle={styles.listContent}
+          keyExtractor={r => r.id}
+          contentContainerStyle={{ padding: Spacing.md, paddingBottom: 100 }}
+          renderItem={renderItem}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.gold} />
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.gold} />
           }
           ListEmptyComponent={
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyTitle}>No Rental Requests</Text>
-              <Text style={styles.emptySub}>When corporate buyers or galleries request to rent your artwork, details will appear here.</Text>
+            <View style={styles.empty}>
+              <Text style={{ fontSize: 44 }}>🖼</Text>
+              <Text style={styles.emptyTitle}>No rental requests</Text>
+              <Text style={styles.emptyText}>
+                Requests to rent your artwork will appear here.
+              </Text>
             </View>
           }
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
-function getStatusStyle(status: string) {
-  switch (status) {
-    case 'ACCEPTED':
-    case 'COMPLETED':
-      return { backgroundColor: '#2E7D3222', borderColor: '#2E7D32' };
-    case 'DECLINED':
-    case 'CANCELLED':
-      return { backgroundColor: '#D32F2F22', borderColor: '#D32F2F' };
-    default:
-      return { backgroundColor: '#F57C0022', borderColor: '#F57C00' };
-  }
-}
-
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bgCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  backBtnText: {
-    fontSize: 20,
-    color: Colors.cream,
-  },
-  headerTitle: {
-    ...Typography.display,
-    fontSize: 18,
-    color: Colors.cream,
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    ...Typography.bodySemibold,
-    color: Colors.cream,
-    marginTop: Spacing.md,
-  },
-  listContent: {
-    padding: Spacing.md,
-    paddingBottom: 40,
-  },
+  backIcon: { color: Colors.gold, fontSize: 22 },
+  headerTitle: { ...Typography.display, fontSize: 20 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
   card: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Spacing.md,
+    backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: Radius.md, padding: Spacing.md, marginBottom: Spacing.sm,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Spacing.xs,
+  head: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  thumb: { width: 48, height: 48, borderRadius: Radius.sm },
+  title: { ...Typography.bodySemibold, fontSize: 14 },
+  meta: { ...Typography.caption, fontSize: 12, marginTop: 2 },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.full, borderWidth: 1 },
+  badgeText: { ...Typography.label, fontSize: 9 },
+
+  amounts: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.sm, marginTop: Spacing.sm },
+  amount: { ...Typography.bodySemibold, fontSize: 15, color: Colors.gold },
+  deposit: { ...Typography.caption, fontSize: 12 },
+
+  actions: {
+    flexDirection: 'row', justifyContent: 'flex-end', gap: Spacing.lg,
+    marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border, paddingTop: Spacing.sm,
   },
-  refText: {
-    ...Typography.bodyBold,
-    fontSize: 13,
-    color: Colors.gold,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-  },
-  statusText: {
-    ...Typography.caption,
-    fontSize: 10,
-    fontWeight: '700',
-    color: Colors.cream,
-  },
-  bodyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  artworkImg: {
-    width: 50,
-    height: 50,
-    borderRadius: Radius.md,
-  },
-  productTitle: {
-    ...Typography.bodyBold,
-    fontSize: 14,
-    color: Colors.cream,
-  },
-  durationText: {
-    ...Typography.caption,
-    fontSize: 12,
-    color: Colors.creamDim,
-    marginTop: 2,
-  },
-  amountText: {
-    ...Typography.bodySemibold,
-    fontSize: 13,
-    color: Colors.gold,
-    marginTop: 2,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    marginTop: Spacing.md,
-    paddingTop: Spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-  },
-  declineBtn: {
-    backgroundColor: '#D32F2F22',
-    borderWidth: 1,
-    borderColor: '#D32F2F',
-  },
-  declineText: {
-    ...Typography.bodyBold,
-    fontSize: 13,
-    color: '#FF5252',
-  },
-  acceptBtn: {
-    backgroundColor: Colors.gold,
-  },
-  acceptText: {
-    ...Typography.bodyBold,
-    fontSize: 13,
-    color: '#0D1B2A',
-  },
-  emptyBox: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-  },
-  emptyTitle: {
-    ...Typography.display,
-    fontSize: 20,
-    color: Colors.cream,
-    marginBottom: 4,
-  },
-  emptySub: {
-    ...Typography.body,
-    fontSize: 13,
-    color: Colors.creamDim,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
+  primary: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
+  decline: { ...Typography.bodySemibold, fontSize: 13, color: Colors.error },
+
+  empty: { alignItems: 'center', paddingVertical: Spacing.xxl },
+  emptyTitle: { ...Typography.heading, fontSize: 18, marginTop: Spacing.md },
+  emptyText: { ...Typography.caption, fontSize: 13, marginTop: 4, textAlign: 'center' },
 });

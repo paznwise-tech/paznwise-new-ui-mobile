@@ -291,6 +291,32 @@ export const EventService = {
     return Array.isArray(data) ? data : (data?.events ?? data?.items ?? []);
   },
 
+  /** Attendees for one of the artist's own events. */
+  async getEventBookings(eventId: string): Promise<any[]> {
+    const res = await fetchApi<any>(`/events/${eventId}/bookings`, { requiresAuth: true });
+    const d = res?.data ?? res;
+    return Array.isArray(d) ? d : (d?.bookings ?? d?.items ?? []);
+  },
+
+  /** Bookings across all of the artist's events, newest first. */
+  async getIncomingEventBookings(): Promise<any[]> {
+    const res = await fetchApi<any>('/events/artist-incoming-bookings', { requiresAuth: true });
+    const d = res?.data ?? res;
+    return Array.isArray(d) ? d : (d?.bookings ?? d?.items ?? []);
+  },
+
+  /** Check-in: marks an attendee's booking as verified at the door. */
+  async verifyBooking(bookingId: string): Promise<void> {
+    await fetchApi(`/events/bookings/${bookingId}/verify`, {
+      method: 'POST',
+      requiresAuth: true,
+    });
+  },
+
+  async deleteEvent(eventId: string): Promise<void> {
+    await fetchApi(`/events/delete/${eventId}`, { method: 'DELETE', requiresAuth: true });
+  },
+
   /** `POST /events/create` (ARTIST role) — plain `POST /events` is not a route. */
   async createEvent(data: {
     eventType: string;

@@ -52,6 +52,15 @@ export function rentalStatusLabel(s: string): string {
   return s.charAt(0) + s.slice(1).toLowerCase();
 }
 
+/** Server caps condition reports at 6 files, on the `photos` field. */
+function buildPhotoForm(photos: Array<{ uri: string; name: string }>): FormData {
+  const form = new FormData();
+  for (const p of photos.slice(0, 6)) {
+    form.append('photos', { uri: p.uri, name: p.name, type: 'image/jpeg' } as unknown as Blob);
+  }
+  return form;
+}
+
 export const rentalService = {
   /**
    * Whether the artwork is free for this date range.
@@ -126,6 +135,42 @@ export const rentalService = {
 
   async acceptRental(id: string): Promise<void> {
     await fetchApi(`/rentals/${id}/accept`, { method: 'POST', requiresAuth: true });
+  },
+
+  /**
+   * Marks the artwork dispatched, with condition-report photos.
+   *
+   * The server requires at least one photo and refuses unless the booking
+   * is ACCEPTED — the photos are the evidence of the artwork's state when
+   * it left, and the renter's protection in a deposit dispute.
+   */
+  async dispatchRental(bookingId: string, photos: Array<{ uri: string; name: string }>): Promise<void> {
+    await fetchApi(`/rentals/${bookingId}/dispatch`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: buildPhotoForm(photos),
+    });
+  },
+
+  /** Records the artwork's return, also requiring at least one photo. */
+  async returnRental(bookingId: string, photos: Array<{ uri: string; name: string }>): Promise<void> {
+    await fetchApi(`/rentals/${bookingId}/return`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: buildPhotoForm(photos),
+    });
+  },
+
+  /** Settles the deposit and closes the rental. */
+  async completeRental(
+    bookingId: string,
+    payload: { depositStatus?: DepositStatus; depositNotes?: string },
+  ): Promise<void> {
+    await fetchApi(`/rentals/${bookingId}/complete`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify(payload),
+    });
   },
 
   async declineRental(id: string, reason?: string): Promise<void> {

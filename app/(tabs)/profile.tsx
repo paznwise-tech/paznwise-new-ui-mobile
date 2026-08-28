@@ -61,6 +61,7 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
     { icon: '📥', label: 'Booking Requests',  sub: 'Accept or decline requests',   route: '/artist/bookings' },
     { icon: '🗓', label: 'My Availability',   sub: 'Slots people can book',        route: '/artist/availability' },
     { icon: '📮', label: 'Rental Requests',   sub: 'Requests for your artwork',    route: '/artist/rentals' },
+    { icon: '🎪', label: 'My Events',         sub: 'Events you are hosting',       route: '/artist/events' },
   ];
 
   const organizer: MenuItem[] = [
