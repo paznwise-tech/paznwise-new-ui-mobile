@@ -9,6 +9,7 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import ProductCard from '@/components/product/ProductCard';
 import { PerformerCard } from '@/components/artist/PerformerCard';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { HERO_SLIDES, CATEGORIES } from '@/constants/data';
 import { useCart, useUser, useFeed } from '@/context/AppContext';
 import { Performer } from '@/types';
