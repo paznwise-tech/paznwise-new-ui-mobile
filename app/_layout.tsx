@@ -105,7 +105,7 @@ function RootNavigator() {
             <Stack.Screen name="addresses/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="orders/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="orders/[id]" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="order-tracking/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="order-tracking/[orderId]" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="favorites/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="coupons/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="reviews/index" options={{ animation: 'slide_from_right' }} />

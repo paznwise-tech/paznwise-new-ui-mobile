@@ -156,7 +156,7 @@ export default function OrderConfirmedScreen() {
             label="Track Order Status"
             onPress={() =>
               router.push({
-                pathname: '/profile/orders/[id]' as any,
+                pathname: '/orders/[id]' as any,
                 params: { id: (order?.orderId || order?.id || orderId || '').toString() },
               })
             }

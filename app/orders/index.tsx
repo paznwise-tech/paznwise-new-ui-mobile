@@ -13,12 +13,21 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { orderService } from '@/services/orderService';
+
+const STATUS_GROUPS: Record<string, string[]> = {
+  Active: ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'OUT_FOR_DELIVERY'],
+  Delivered: ['DELIVERED', 'COMPLETED'],
+  Cancelled: ['CANCELLED', 'REJECTED', 'FAILED'],
+};
+
+const FILTERS = ['All', 'Active', 'Delivered', 'Cancelled'];
 import type { Order } from '@/types';
 
 export default function MyOrdersScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string>('All');
 
   useEffect(() => {
     fetchOrders();
@@ -41,6 +50,14 @@ export default function MyOrdersScreen() {
     fetchOrders();
   };
 
+  // Filtering is local: the list endpoint returns the buyer's orders in one
+  // page, and the set is small enough that a round trip per tab is not worth
+  // it. If pagination is added this must move to the `status` query param.
+  const visibleOrders =
+    statusFilter === 'All'
+      ? orders
+      : orders.filter(o => STATUS_GROUPS[statusFilter]?.includes(String(o.status).toUpperCase()));
+
   const renderOrderItem = ({ item }: { item: Order }) => {
     const items = item.products || item.items || item.orderItems || [];
     const firstItem = items[0];
@@ -58,7 +75,7 @@ export default function MyOrdersScreen() {
         style={styles.orderCard}
         onPress={() =>
           router.push({
-            pathname: '/profile/orders/[id]' as any,
+            pathname: '/orders/[id]' as any,
             params: { id: (item.orderId || item.id).toString() },
           })
         }
@@ -105,6 +122,23 @@ export default function MyOrdersScreen() {
         <View style={{ width: 36 }} />
       </View>
 
+      <FlatList
+        data={FILTERS}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterList}
+        keyExtractor={f => f}
+        renderItem={({ item: f }) => (
+          <TouchableOpacity
+            style={[styles.filterChip, statusFilter === f && styles.filterChipActive]}
+            onPress={() => setStatusFilter(f)}
+          >
+            <Text style={[styles.filterText, statusFilter === f && { color: Colors.gold }]}>{f}</Text>
+          </TouchableOpacity>
+        )}
+        style={{ flexGrow: 0 }}
+      />
+
       {loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={Colors.gold} />
@@ -112,7 +146,7 @@ export default function MyOrdersScreen() {
         </View>
       ) : (
         <FlatList
-          data={orders}
+          data={visibleOrders}
           keyExtractor={(item) => (item.orderId || item.id).toString()}
           renderItem={renderOrderItem}
           contentContainerStyle={styles.listContent}
@@ -152,6 +186,13 @@ function getStatusStyle(status?: string) {
 }
 
 const styles = StyleSheet.create({
+  filterList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, gap: Spacing.sm },
+  filterChip: {
+    paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+  },
+  filterChipActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '18' },
+  filterText: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
   container: {
     flex: 1,
     backgroundColor: Colors.bg,

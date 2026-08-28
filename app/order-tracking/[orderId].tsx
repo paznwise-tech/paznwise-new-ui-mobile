@@ -1,28 +1,41 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
+import { orderService } from '@/services/orderService';
 
-const STAGES = [
-  { label: 'Order Placed', detail: 'Your order has been received', done: true },
-  { label: 'Artwork Packed', detail: 'Artist is preparing your artwork', done: true },
-  { label: 'Picked Up', detail: 'Picked up by courier partner', done: true },
-  { label: 'In Transit', detail: 'Your package is on its way', done: false, active: true },
-  { label: 'Out for Delivery', detail: 'Will be delivered today', done: false },
-  { label: 'Delivered', detail: 'Package delivered successfully', done: false },
-];
-
+/**
+ * Shipment tracking.
+ *
+ * The stage list, courier and delivery estimate all come from
+ * `GET /orders/:id/tracking`. This screen previously rendered a hardcoded
+ * six-stage array that always claimed "In Transit" with a literal courier
+ * of "Blue Dart Express", regardless of the order — a delivered or
+ * cancelled order looked identical to one in transit.
+ */
 export default function OrderTracking() {
-  const { orderId, estimatedDelivery } = useLocalSearchParams<{ orderId?: string; estimatedDelivery?: string }>();
-
+  const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const id = orderId ?? '';
-  const delivery = estimatedDelivery ?? 'In 5–7 business days';
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['order-tracking', id],
+    queryFn: () => orderService.getTracking(id),
+    enabled: !!id,
+  });
+
+  const stages = data?.stages ?? [];
+  const delivery = data?.deliveryRange ?? data?.estimatedDelivery ?? 'Being scheduled';
 
   const handleShare = async () => {
+    if (!data) return;
     try {
       await Share.share({
         title: 'Track my order',
-        message: `Order ${id || 'details'} — In Transit, delivery expected ${delivery}`,
+        message:
+          `Order ${data.orderRef} — ${data.currentStage}` +
+          (data.courier?.awb ? `\nAWB: ${data.courier.awb}` : '') +
+          `\nExpected: ${delivery}`,
       });
     } catch {}
   };
@@ -35,21 +48,31 @@ export default function OrderTracking() {
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Track Order</Text>
-          <TouchableOpacity onPress={handleShare}>
-            <Text style={styles.shareIcon}>↗</Text>
+          <TouchableOpacity onPress={handleShare} disabled={!data}>
+            <Text style={[styles.shareIcon, !data && { opacity: 0.4 }]}>↗</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
 
+      {isLoading ? (
+        <View style={styles.center}><ActivityIndicator color={Colors.gold} size="large" /></View>
+      ) : error || !data ? (
+        <View style={styles.center}>
+          <Text style={styles.errorText}>Could not load tracking for this order.</Text>
+          <TouchableOpacity onPress={() => refetch()} style={{ marginTop: Spacing.md }}>
+            <Text style={{ color: Colors.gold }}>Try again</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 60, gap: Spacing.xl }}>
 
         {/* Courier banner */}
         <View style={styles.courierCard}>
           <View style={styles.courierRow}>
             <View>
-              {!!id && <Text style={styles.courierOrderId}>{id}</Text>}
+              <Text style={styles.courierOrderId}>{data.orderRef}</Text>
               <View style={styles.statusPill}>
-                <Text style={styles.statusPillText}>In Transit</Text>
+                <Text style={styles.statusPillText}>{data.currentStage}</Text>
               </View>
             </View>
             <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -58,17 +81,25 @@ export default function OrderTracking() {
             </View>
           </View>
           <View style={styles.divider} />
-          <View style={styles.courierInfo}>
-            <Text style={styles.courierLabel}>Courier Partner</Text>
-            <Text style={styles.courierVal}>Blue Dart Express</Text>
-          </View>
+          {data.courier?.name ? (
+            <View style={styles.courierInfo}>
+              <Text style={styles.courierLabel}>Courier Partner</Text>
+              <Text style={styles.courierVal}>{data.courier.name}</Text>
+            </View>
+          ) : null}
+          {data.courier?.awb ? (
+            <View style={styles.courierInfo}>
+              <Text style={styles.courierLabel}>Tracking number</Text>
+              <Text style={styles.courierVal}>{data.courier.awb}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Tracking timeline */}
         <View>
           <Text style={styles.sectionTitle}>Live Tracking</Text>
           <View>
-            {STAGES.map((stage, i) => (
+            {stages.map((stage, i) => (
               <View key={stage.label} style={styles.stageRow}>
                 <View style={styles.stageLeft}>
                   <View style={[
@@ -82,7 +113,7 @@ export default function OrderTracking() {
                         ? <View style={styles.stageLiveDot} />
                         : null}
                   </View>
-                  {i < STAGES.length - 1 && (
+                  {i < stages.length - 1 && (
                     <View style={[styles.stageLine, stage.done && styles.stageLineDone]} />
                   )}
                 </View>
@@ -102,6 +133,7 @@ export default function OrderTracking() {
                     )}
                   </View>
                   <Text style={styles.stageDetail}>{stage.detail}</Text>
+                  {stage.sub ? <Text style={styles.stageSub}>{stage.sub}</Text> : null}
                 </View>
               </View>
             ))}
@@ -113,11 +145,15 @@ export default function OrderTracking() {
           <TouchableOpacity style={styles.messageBtn} onPress={() => router.push('/messages' as any)}>
             <Text style={styles.messageBtnText}>💬 Message the Artist</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.issueBtn}>
+          <TouchableOpacity
+            style={styles.issueBtn}
+            onPress={() => router.push({ pathname: '/contact', params: { subject: `Issue with order ${data.orderRef}` } } as any)}
+          >
             <Text style={styles.issueBtnText}>Report an Issue</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+      )}
     </View>
   );
 }
@@ -127,6 +163,9 @@ const styles = StyleSheet.create({
   backIcon: { color: Colors.gold, fontSize: 22 },
   title: { ...Typography.display, fontSize: 22 },
   shareIcon: { color: Colors.gold, fontSize: 22 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
+  errorText: { ...Typography.body, fontSize: 14, color: Colors.creamDim, textAlign: 'center' },
+  stageSub: { ...Typography.caption, fontSize: 11, marginTop: 2 },
   courierCard: { backgroundColor: Colors.bgCard, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border, padding: Spacing.lg, gap: Spacing.md },
   courierRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   courierOrderId: { ...Typography.bodySemibold, fontSize: 14, color: Colors.cream, marginBottom: 6 },

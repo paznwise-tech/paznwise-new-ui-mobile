@@ -1,4 +1,5 @@
 import { fetchApi } from './api';
+import { apiBaseUrl } from '@/config/env';
 import type { Order, OrderItem, CheckoutSummary, ApiResponse } from '@/types';
 
 /**
@@ -54,6 +55,35 @@ export interface RazorpayOrderResponse {
 
 /** What POST /checkout/:id/complete accepts — see schema/checkoutValidationSchema.js. */
 export type PaymentMethod = 'COD' | 'CARD' | 'UPI' | 'WALLET' | 'NET_BANKING';
+
+export interface TrackingStage {
+  label: string;
+  /** Date line, or "Pending" for a stage not yet reached. */
+  sub: string;
+  detail: string;
+  done: boolean;
+  active: boolean;
+}
+
+export interface OrderTracking {
+  orderId: string;
+  orderRef: string;
+  status: string;
+  currentStage: string;
+  estimatedDelivery?: string;
+  deliveryRange?: string;
+  courier?: { name?: string; awb?: string };
+  stages: TrackingStage[];
+  items?: Array<{ id: string; title: string; artist?: string; price?: number; img?: string | null }>;
+}
+
+export interface OrderStats {
+  total?: number;
+  pending?: number;
+  delivered?: number;
+  cancelled?: number;
+  totalSpent?: number;
+}
 
 export const orderService = {
   /** Buyer's orders. */
@@ -138,6 +168,34 @@ export const orderService = {
       method: 'DELETE',
       requiresAuth: true,
     });
+  },
+
+  /**
+   * Shipment tracking. The server derives the stage list from order status,
+   * so the client renders whatever it is given rather than assuming stages.
+   */
+  async getTracking(orderId: string | number): Promise<OrderTracking> {
+    const res = await fetchApi<any>(`/orders/${orderId}/tracking`, { requiresAuth: true });
+    return (res?.data ?? res) as OrderTracking;
+  },
+
+  /** Puts the order's items back in the cart. */
+  async reorder(orderId: string | number): Promise<void> {
+    await fetchApi(`/orders/${orderId}/reorder`, { method: 'POST', requiresAuth: true });
+  },
+
+  /** Absolute URL for the invoice PDF; the caller downloads it with the auth header. */
+  invoiceUrl(orderId: string | number): string {
+    return `${apiBaseUrl}/api/orders/${orderId}/invoice/download`;
+  },
+
+  async getStats(): Promise<OrderStats | null> {
+    try {
+      const res = await fetchApi<any>('/orders/stats', { requiresAuth: true });
+      return (res?.data ?? res) as OrderStats;
+    } catch {
+      return null;
+    }
   },
 
   // ── Razorpay ───────────────────────────────────────────

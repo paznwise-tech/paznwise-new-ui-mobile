@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,16 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { orderService } from '@/services/orderService';
+import { useQueryClient } from '@tanstack/react-query';
+import { cartKeys } from '@/hooks/useCartQueries';
+import { downloadInvoice } from '@/utils/invoice';
 import type { Order } from '@/types';
 
 const ORDER_STEPS = [
@@ -25,6 +29,8 @@ export default function OrderDetailTrackingScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
   const [order, setOrder] = useState<Order | null>(null);
+  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
 
   useEffect(() => {
     fetchOrderDetails();
@@ -61,6 +67,59 @@ export default function OrderDetailTrackingScreen() {
 
   const items = order?.products || order?.items || order?.orderItems || [];
   const currentStep = getActiveStepIndex(order?.status);
+
+  const handleCancel = useCallback(() => {
+    if (!order) return;
+    Alert.alert('Cancel order', 'This cannot be undone. Cancel this order?', [
+      { text: 'Keep order', style: 'cancel' },
+      {
+        text: 'Cancel order',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          try {
+            await orderService.cancelOrder(order.id);
+            await fetchOrderDetails();
+            qc.invalidateQueries({ queryKey: ['orders'] });
+          } catch (e: any) {
+            Alert.alert('Could not cancel', e?.message ?? 'Please try again.');
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+  }, [order, qc]);
+
+  const handleReorder = useCallback(async () => {
+    if (!order) return;
+    setBusy(true);
+    try {
+      await orderService.reorder(order.id);
+      // The server puts the items back in the cart, so the cached cart is stale.
+      qc.invalidateQueries({ queryKey: cartKeys.all });
+      Alert.alert('Added to cart', 'These items are back in your cart.', [
+        { text: 'Keep browsing' },
+        { text: 'View cart', onPress: () => router.push('/product/cart' as any) },
+      ]);
+    } catch (e: any) {
+      Alert.alert('Could not reorder', e?.message ?? 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, [order, qc]);
+
+  const handleInvoice = useCallback(async () => {
+    if (!order) return;
+    setBusy(true);
+    try {
+      await downloadInvoice(order.id);
+    } catch (e: any) {
+      Alert.alert('Could not open invoice', e?.message ?? 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, [order]);
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -153,12 +212,53 @@ export default function OrderDetailTrackingScreen() {
             </Text>
           </View>
         )}
+
+        {/* Actions */}
+        {order && (
+          <View style={styles.actions}>
+            {CANCELLABLE.includes(String(order.status).toUpperCase()) && (
+              <TouchableOpacity style={styles.actionBtn} onPress={handleCancel} disabled={busy}>
+                <Text style={[styles.actionText, { color: Colors.error }]}>Cancel order</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => router.push(`/order-tracking/${order.id}` as any)}
+            >
+              <Text style={styles.actionText}>Track shipment</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleReorder} disabled={busy}>
+              <Text style={styles.actionText}>Buy these again</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleInvoice} disabled={busy}>
+              <Text style={styles.actionText}>Download invoice</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+/** Statuses the API still allows a buyer to cancel. */
+const CANCELLABLE = ['PENDING', 'CONFIRMED', 'PROCESSING'];
+
 const styles = StyleSheet.create({
+  actions: {
+    marginTop: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    overflow: 'hidden',
+    backgroundColor: Colors.bgCard,
+  },
+  actionBtn: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  actionText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
   container: {
     flex: 1,
     backgroundColor: Colors.bg,
