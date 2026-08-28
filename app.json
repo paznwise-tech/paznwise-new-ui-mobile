@@ -38,7 +38,8 @@
           "cameraPermission": "Allow Paznwise to use your camera to take product photos."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-notifications"
     ],
     "scheme": "paznwise",
     "experiments": {

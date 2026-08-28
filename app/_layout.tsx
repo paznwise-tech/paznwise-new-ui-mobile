@@ -21,6 +21,7 @@ import { Colors } from '@/constants/theme';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useUser } from '@/context/AppContext';
 import { queryClient } from '@/api/queryClient';
+import { usePushNotifications } from '@/push/usePushNotifications';
 import { PaywallSheet } from '@/components/subscription/PaywallSheet';
 
 SplashScreen.preventAutoHideAsync();
@@ -60,6 +61,10 @@ export default function RootLayout() {
  */
 function RootNavigator() {
   const { status } = useUser();
+
+  // Registration waits for a session: the device-token endpoint is
+  // authenticated, and a token registered before sign-in has no owner.
+  usePushNotifications(status === 'signedIn');
 
   useEffect(() => {
     if (status !== 'loading') SplashScreen.hideAsync().catch(() => {});

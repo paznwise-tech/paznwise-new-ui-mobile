@@ -209,6 +209,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const logout = useCallback(async () => {
     try {
+      // Before the access token goes: unregistering needs it.
+      const { unregisterPush } = await import('@/push/registerDevice');
+      await unregisterPush();
+    } catch {
+      // Never block sign-out on this.
+    }
+    try {
       const refreshToken = await AuthStorage.getRefreshToken();
       if (refreshToken) {
         const { AuthService } = await import('@/services/authService');
