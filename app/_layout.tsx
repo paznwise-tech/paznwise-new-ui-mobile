@@ -138,7 +138,6 @@ function RootNavigator() {
             <Stack.Screen name="sell/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="sell/terms" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="sell/pending" options={{ animation: 'fade' }} />
-            <Stack.Screen name="seller/setup/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="seller/dashboard/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="seller/reviews/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="seller/royalties/index" options={{ animation: 'slide_from_right' }} />

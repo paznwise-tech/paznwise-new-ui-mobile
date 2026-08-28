@@ -69,7 +69,7 @@ export default function SellIntro() {
         <View style={styles.ctaWrap}>
           <GoldButton
             label="Start — Set up your profile"
-            onPress={() => router.push('/seller/setup' as any)}
+            onPress={() => router.push('/artist/register-artist' as any)}
             fullWidth
             size="lg"
           />
