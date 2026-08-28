@@ -57,14 +57,18 @@ export default function GlobalSearch() {
       const [usersRes, eventsRes, productsRes] = await Promise.allSettled([
         SearchService.searchUsers(q, { limit: 10 }),
         EventService.getEvents({ search: q, limit: 10 }),
-        ProductService.getMarketplaceProducts({ limit: 10 }),
+        ProductService.getMarketplaceProducts({ search: q, limit: 10 }),
       ]);
       if (usersRes.status === 'fulfilled') setArtists(usersRes.value);
       if (eventsRes.status === 'fulfilled') setEvents(eventsRes.value);
       if (productsRes.status === 'fulfilled') {
         const raw = productsRes.value as any;
         const list: any[] = Array.isArray(raw.data) ? raw.data : (raw.data?.products ?? raw.data?.items ?? []);
-        setArtworks(list.map(normalizeArtwork).filter(a => a.title.toLowerCase().includes(q.toLowerCase())));
+        // The API now does the searching. Filtering here as well used to be
+        // the only thing narrowing the results — the request ignored `q`, so
+        // the Art tab returned the same ten products for every query and then
+        // discarded most of them by title match.
+        setArtworks(list.map(normalizeArtwork));
       }
     } finally {
       setLoading(false);

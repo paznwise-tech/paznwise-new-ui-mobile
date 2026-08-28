@@ -388,7 +388,12 @@ export default function FeedPostDetail() {
     const next = !isSaved;
     setIsSaved(next);
     try {
-      await FeedService.interact({ postId, action: next ? 'view' : 'view' });
+      // `save` is a toggle server-side and reports the resulting state, so
+      // the same action is sent both ways and the response is authoritative.
+      // This previously sent 'view' in both branches, which recorded a view
+      // and never saved anything.
+      const res = await FeedService.interact({ postId, action: 'save' });
+      if (typeof res.isSaved === 'boolean') setIsSaved(res.isSaved);
     } catch {
       setIsSaved(!next);
     }

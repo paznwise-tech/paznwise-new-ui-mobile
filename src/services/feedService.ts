@@ -249,7 +249,10 @@ export interface UpdatePostData {
   tags?: string;
 }
 
-export type InteractAction = 'like' | 'unlike' | 'comment' | 'share' | 'view';
+// Mirrors the Joi enum in src/interact/interact.controller.js. `like` and
+// `save` are toggles server-side — there is no separate 'unlike', which the
+// previous type offered and the API would have rejected.
+export type InteractAction = 'like' | 'save' | 'share' | 'view' | 'purchase' | 'skip' | 'comment';
 
 export interface InteractData {
   postId: number;
@@ -260,6 +263,9 @@ export interface InteractResponse {
   success: boolean;
   isLiked?: boolean;
   likesCount?: number;
+  /** Returned for `save`, which the server treats as a toggle. */
+  isSaved?: boolean;
+  savesCount?: number;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

@@ -67,9 +67,11 @@ export default function Discover() {
   const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
+    // These two rails used to issue the identical request, so "New Arrivals"
+    // and "Featured" showed the same items in the same order.
     Promise.allSettled([
-      ProductService.getMarketplaceProducts({ limit: 8 }),
-      ProductService.getMarketplaceProducts({ limit: 8 }),
+      ProductService.getMarketplaceProducts({ limit: 8, sort: 'newest' }),
+      ProductService.getMarketplaceProducts({ limit: 8, sort: 'popular' }),
       EventService.getEvents({ limit: 5 }),
     ]).then(([newRes, featuredRes, eventsRes]) => {
       if (newRes.status === 'fulfilled') {
