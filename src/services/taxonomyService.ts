@@ -103,6 +103,18 @@ export const TaxonomyService = {
     }));
   },
 
+  /** Event categories — `GET /event-categories`, public. */
+  async getEventCategories(): Promise<string[]> {
+    try {
+      const res = await fetchApi<any>('/event-categories', { requiresAuth: false });
+      return toList(res, 'categories', 'items')
+        .map((c: any) => c.name ?? c.title ?? c.label ?? '')
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  },
+
   /** Bookable performer/service categories, for the Hire filters. */
   async getPerformerCategories(): Promise<PerformerCategory[]> {
     const res = await fetchApi<any>('/artist-services/categories', { requiresAuth: false });

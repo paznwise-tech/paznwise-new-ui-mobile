@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Alert,
   ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -23,6 +23,7 @@ export default function MyEventTickets() {
   const [tickets, setTickets] = useState<ApiEventTicket[]>([]);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -38,6 +39,27 @@ export default function MyEventTickets() {
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     load().finally(() => setRefreshing(false));
+  }, [load]);
+
+  const handleCancel = useCallback((ticket: ApiEventTicket) => {
+    Alert.alert('Cancel booking', 'This will release your seats. Continue?', [
+      { text: 'Keep booking', style: 'cancel' },
+      {
+        text: 'Cancel booking',
+        style: 'destructive',
+        onPress: async () => {
+          setCancellingId(ticket.id);
+          try {
+            await EventService.cancelBooking(ticket.id);
+            await load();
+          } catch (e: any) {
+            Alert.alert('Could not cancel', e?.message ?? 'Please try again.');
+          } finally {
+            setCancellingId(null);
+          }
+        },
+      },
+    ]);
   }, [load]);
 
   const renderItem = useCallback(({ item }: { item: ApiEventTicket }) => {
@@ -94,10 +116,22 @@ export default function MyEventTickets() {
               ) : null}
             </View>
           </View>
+
+          {CANCELLABLE.includes(status) && (
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => handleCancel(item)}
+              disabled={cancellingId === item.id}
+            >
+              <Text style={styles.cancelText}>
+                {cancellingId === item.id ? 'Cancelling…' : 'Cancel booking'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
-  }, []);
+  }, [handleCancel, cancellingId]);
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -146,7 +180,15 @@ export default function MyEventTickets() {
   );
 }
 
+/** Statuses a buyer can still cancel; a used or cancelled ticket cannot. */
+const CANCELLABLE = ['pending', 'confirmed'];
+
 const styles = StyleSheet.create({
+  cancelBtn: {
+    marginTop: Spacing.md, paddingVertical: Spacing.sm, alignItems: 'center',
+    borderTopWidth: 1, borderTopColor: Colors.border,
+  },
+  cancelText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.error },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,

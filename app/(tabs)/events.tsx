@@ -1,18 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { EventCard } from '@/components/events/EventCard';
 import { EventService } from '@/services/eventService';
+import { useEventCategories } from '@/hooks/useTaxonomy';
 import { Event } from '@/types';
 
-const CATS   = ['All', 'Exhibition', 'Performance', 'Workshop', 'Live'];
-const CITIES = ['All Cities', 'Mumbai', 'Delhi', 'Bangalore', 'Goa'];
+const ALL_CITIES = 'All Cities';
 
 export default function Events() {
   const [cat, setCat]       = useState('All');
-  const [city, setCity]     = useState('All Cities');
+  const [city, setCity]     = useState(ALL_CITIES);
+  const CATS = useEventCategories();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -31,6 +32,13 @@ export default function Events() {
   }, [cat, city]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Derived from what is actually listed, rather than a fixed list that can
+  // name cities with no events and miss cities that have them.
+  const CITIES = useMemo(
+    () => [ALL_CITIES, ...Array.from(new Set(events.map(e => e.city).filter(Boolean))).sort()],
+    [events],
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
@@ -106,7 +114,7 @@ export default function Events() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No events found</Text>
-              <TouchableOpacity onPress={() => { setCat('All'); setCity('All Cities'); }}>
+              <TouchableOpacity onPress={() => { setCat('All'); setCity(ALL_CITIES); }}>
                 <Text style={{ ...Typography.bodySemibold, color: Colors.gold, fontSize: 14 }}>Clear filters</Text>
               </TouchableOpacity>
             </View>

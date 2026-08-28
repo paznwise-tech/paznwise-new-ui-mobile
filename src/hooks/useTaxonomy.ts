@@ -43,6 +43,15 @@ export function useHeroSlides() {
   });
 }
 
+export function useEventCategories() {
+  const query = useQuery({
+    queryKey: ['event-categories'],
+    queryFn: TaxonomyService.getEventCategories,
+    ...LONG_LIVED,
+  });
+  return ['All', ...(query.data ?? [])];
+}
+
 export function usePerformerCategories() {
   return useQuery({
     queryKey: ['performer-categories'],

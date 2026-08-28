@@ -113,6 +113,26 @@ function normalizeEvent(e: ApiEvent, idx: number): Event {
   };
 }
 
+export type SeatStatus = 'AVAILABLE' | 'LOCKED' | 'BOOKED';
+
+export interface EventSeat {
+  id: string;
+  seatNumber: string;
+  status: SeatStatus;
+  lockedUntil?: string;
+}
+
+/** What POST /events/book returns: the booking, plus a payment order if payable. */
+export interface EventBookingResult {
+  id: string;
+  bookingId?: string;
+  totalPrice?: number | string;
+  status?: string;
+  /** Null for a free event, or when Razorpay is not configured. */
+  razorpayOrderId?: string | null;
+  keyId?: string | null;
+}
+
 export const EventService = {
   async getEvents(params?: {
     category?: string;
@@ -152,6 +172,62 @@ export const EventService = {
     } catch {
       return null;
     }
+  },
+
+  /** Seats for a slot, when the event is seat-mapped. */
+  async getSeats(slotId: string): Promise<EventSeat[]> {
+    const res = await fetchApi<any>(`/slots/${slotId}/seats`, { requiresAuth: false });
+    const data = res?.data ?? res;
+    const list: any[] = Array.isArray(data) ? data : (data?.seats ?? []);
+    return list.map((s: any) => ({
+      id: String(s.id),
+      seatNumber: String(s.seatNumber ?? ''),
+      status: (s.status ?? 'AVAILABLE') as SeatStatus,
+      lockedUntil: s.lockedUntil ?? undefined,
+    }));
+  },
+
+  /**
+   * Reserves seats for a short window before payment.
+   *
+   * Throws with `unavailableSeats` on a 409 — someone else took one of them
+   * between rendering the map and confirming. Callers must drop those seats
+   * and refresh rather than retrying blind.
+   */
+  async lockSeats(slotId: string, seatIds: string[]): Promise<{ lockedUntil?: string }> {
+    const res = await fetchApi<any>(`/slots/${slotId}/seats/lock`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify({ seatIds }),
+    });
+    return res?.data ?? res ?? {};
+  },
+
+  /** Existing booking for this slot, so a user is not shown a map twice. */
+  async getMyBookingForSlot(slotId: string): Promise<any | null> {
+    try {
+      const res = await fetchApi<any>(`/slots/${slotId}/my-booking`, { requiresAuth: true });
+      return res?.data ?? res ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Server-side signature check; this is what confirms a paid booking. */
+  async verifyBookingPayment(
+    bookingId: string,
+    payload: {
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+    },
+  ): Promise<any> {
+    const res = await fetchApi<any>(`/events/bookings/${bookingId}/verify`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify(payload),
+    });
+    return res?.data ?? res;
   },
 
   async getEventSlots(eventId: string): Promise<any[]> {
