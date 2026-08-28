@@ -17,7 +17,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
-import { orderService } from '@/services/orderService';
+import { orderService, type PaymentMethod } from '@/services/orderService';
+import { DeliveryOptionService, type DeliveryOption } from '@/services/deliveryOptionService';
+import { useRazorpayPayment } from '@/payments/useRazorpayPayment';
+import { useUser } from '@/context/AppContext';
+import { cartKeys } from '@/hooks/useCartQueries';
 import { addressService } from '@/services/addressService';
 import { CouponService, type Coupon } from '@/services/couponService';
 import type { Address, AddressPayload, CheckoutSummary } from '@/types';
@@ -25,8 +29,8 @@ import { useCart } from '@/context/AppContext';
 
 export default function CheckoutScreen() {
   const { cart, cartTotal } = useCart();
+  const { user } = useUser();
   const [loading, setLoading] = useState(true);
-  const [placing, setPlacing] = useState(false);
 
   // Session & Summary
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -54,8 +58,15 @@ export default function CheckoutScreen() {
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
   const [publicCoupons, setPublicCoupons] = useState<Coupon[]>([]);
 
-  // Delivery option
-  const [deliverySpeed, setDeliverySpeed] = useState<'free' | 'express'>('free');
+  // Delivery options come from the API. The previous free/express toggle was
+  // cosmetic: it changed a local number and was never sent anywhere, so the
+  // shipping the customer picked had no effect on what they were charged.
+  const [deliveryOptions, setDeliveryOptions] = useState<DeliveryOption[]>([]);
+  const [deliveryOptionId, setDeliveryOptionId] = useState<string | undefined>(undefined);
+
+  // Online payment is only offered when the server has Razorpay configured.
+  const [onlineEnabled, setOnlineEnabled] = useState(false);
+  const [payMethod, setPayMethod] = useState<PaymentMethod>('COD');
 
   useEffect(() => {
     initCheckout();
@@ -82,8 +93,18 @@ export default function CheckoutScreen() {
       const coupons = await CouponService.getCoupons();
       setPublicCoupons(coupons);
 
-      // 4. Fetch summary
-      await fetchSummary();
+      // 4. Delivery options and whether online payment is available
+      const [options, rzp] = await Promise.all([
+        DeliveryOptionService.getOptions(),
+        orderService.getRazorpayConfig(),
+      ]);
+      setDeliveryOptions(options);
+      if (options.length > 0) setDeliveryOptionId(options[0].id);
+      setOnlineEnabled(rzp.enabled);
+      if (rzp.enabled) setPayMethod('UPI');
+
+      // 5. Fetch summary
+      await fetchSummary(options[0]?.id);
     } catch (err: any) {
       console.warn('[Checkout] Initialization error:', err.message);
     } finally {
@@ -91,9 +112,9 @@ export default function CheckoutScreen() {
     }
   };
 
-  const fetchSummary = async () => {
+  const fetchSummary = async (optionId?: string) => {
     try {
-      const sum = await orderService.getCheckoutSummary();
+      const sum = await orderService.getCheckoutSummary(optionId ?? deliveryOptionId);
       if (sum) {
         setSummary(sum);
         if (sum.appliedCoupon) {
@@ -175,40 +196,78 @@ export default function CheckoutScreen() {
     }
   };
 
-  const handleProceedToPayment = async () => {
+  const handleSelectDelivery = async (optionId: string) => {
+    setDeliveryOptionId(optionId);
+    await fetchSummary(optionId);
+  };
+
+  /**
+   * Placing the order.
+   *
+   * COD completes the session directly. Online payment goes through
+   * Razorpay: the server creates the order (recalculating the amount from
+   * the cart — nothing sent from here influences the charge), the native
+   * sheet collects payment, and the server verifies the signature. Only
+   * that verification confirms the order.
+   */
+  const { pay, processing } = useRazorpayPayment<{ orderId?: string; id?: string }>({
+    createOrder: async () => {
+      if (!sessionId || !selectedAddressId) return null;
+      await orderService.attachAddressToSession(sessionId, selectedAddressId);
+
+      if (payMethod === 'COD') return null;
+
+      const order = await orderService.createRazorpayOrder({
+        sessionId,
+        addressId: selectedAddressId,
+        deliveryOptionId,
+      });
+      return {
+        razorpayOrderId: order.razorpayOrderId,
+        keyId: order.keyId,
+        amountPaise: order.amount, // already paise from the API
+        currency: order.currency,
+        description: 'Paznwise order',
+        internalId: order.internalOrderId,
+        prefill: {
+          name: user.name || undefined,
+          email: user.email || undefined,
+        },
+      };
+    },
+    verify: async (payment, internalId) =>
+      orderService.verifyRazorpayPayment({
+        razorpay_order_id: payment.razorpay_order_id,
+        razorpay_payment_id: payment.razorpay_payment_id,
+        razorpay_signature: payment.razorpay_signature,
+        internalOrderId: String(internalId),
+      }),
+    // COD, and any zero-total order, settle without the gateway.
+    onFree: async () => orderService.completeCheckout(sessionId!, payMethod, deliveryOptionId),
+    invalidate: [cartKeys.all, ['orders']],
+    onSuccess: result => {
+      router.replace({
+        pathname: '/checkout/confirmed' as any,
+        params: { orderId: String(result.orderId ?? result.id ?? '') },
+      });
+    },
+  });
+
+  const handlePlaceOrder = () => {
     if (!selectedAddressId) {
       Alert.alert('Delivery Address', 'Please select or add a delivery address to proceed.');
       return;
     }
-
     if (!sessionId) {
       Alert.alert('Error', 'Checkout session not initialized.');
       return;
     }
-
-    setPlacing(true);
-    try {
-      // Attach address to session
-      await orderService.attachAddressToSession(sessionId, selectedAddressId);
-
-      // Navigate to payment screen with session params
-      router.push({
-        pathname: '/checkout/payment' as any,
-        params: {
-          sessionId,
-          addressId: selectedAddressId,
-          total: grandTotal.toString(),
-        },
-      });
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to process address selection');
-    } finally {
-      setPlacing(false);
-    }
+    pay();
   };
 
   const subtotal = summary?.subtotal ?? cartTotal;
-  const shipping = summary?.shipping ?? (deliverySpeed === 'express' ? 299 : 0);
+  const selectedDelivery = deliveryOptions.find(o => o.id === deliveryOptionId);
+  const shipping = summary?.shipping ?? selectedDelivery?.price ?? 0;
   const discount = summary?.discount ?? (appliedCoupon?.discount || 0);
   const grandTotal = summary?.grandTotal ?? (subtotal + shipping - discount);
 
@@ -365,22 +424,48 @@ export default function CheckoutScreen() {
               </View>
             )}
 
-            {/* Delivery Speed Options */}
-            <Text style={[styles.subSectionTitle, { marginTop: Spacing.md }]}>Delivery Speed</Text>
-            <View style={styles.deliveryRow}>
+            {deliveryOptions.length > 0 && (
+              <>
+                <Text style={[styles.subSectionTitle, { marginTop: Spacing.md }]}>Delivery Speed</Text>
+                <View style={styles.deliveryRow}>
+                  {deliveryOptions.map(opt => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={[styles.deliveryOption, deliveryOptionId === opt.id && styles.deliveryOptionActive]}
+                      onPress={() => handleSelectDelivery(opt.id)}
+                    >
+                      <Text style={styles.deliveryTitle}>
+                        {opt.name}{opt.price > 0 ? ` (₹${opt.price.toLocaleString('en-IN')})` : ' (Free)'}
+                      </Text>
+                      {opt.estimatedDays ? (
+                        <Text style={styles.deliverySub}>{opt.estimatedDays}</Text>
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* Payment method */}
+          <View style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Payment</Text>
+            <View style={styles.payRow}>
+              {onlineEnabled && (
+                <TouchableOpacity
+                  style={[styles.payOption, payMethod !== 'COD' && styles.payOptionActive]}
+                  onPress={() => setPayMethod('UPI')}
+                >
+                  <Text style={styles.payTitle}>Pay Online</Text>
+                  <Text style={styles.paySub}>UPI, cards, net banking & wallets</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                style={[styles.deliveryOption, deliverySpeed === 'free' && styles.deliveryOptionActive]}
-                onPress={() => setDeliverySpeed('free')}
+                style={[styles.payOption, payMethod === 'COD' && styles.payOptionActive]}
+                onPress={() => setPayMethod('COD')}
               >
-                <Text style={styles.deliveryTitle}>Standard (Free)</Text>
-                <Text style={styles.deliverySub}>5–7 Business Days</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.deliveryOption, deliverySpeed === 'express' && styles.deliveryOptionActive]}
-                onPress={() => setDeliverySpeed('express')}
-              >
-                <Text style={styles.deliveryTitle}>Express (₹299)</Text>
-                <Text style={styles.deliverySub}>2–3 Business Days</Text>
+                <Text style={styles.payTitle}>Cash on Delivery</Text>
+                <Text style={styles.paySub}>Pay when your order arrives</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -481,9 +566,15 @@ export default function CheckoutScreen() {
             <Text style={styles.bottomPrice}>₹{grandTotal.toLocaleString('en-IN')}</Text>
           </View>
           <GoldButton
-            label={placing ? 'Processing...' : 'Proceed to Payment'}
-            onPress={handleProceedToPayment}
-            disabled={placing}
+            label={
+              processing
+                ? 'Processing…'
+                : payMethod === 'COD'
+                  ? 'Place Order'
+                  : `Pay ₹${grandTotal.toLocaleString('en-IN')}`
+            }
+            onPress={handlePlaceOrder}
+            disabled={processing || !selectedAddressId}
             size="lg"
           />
         </View>
@@ -687,6 +778,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#0D1B2A',
   },
+  payRow: { gap: Spacing.sm, marginTop: Spacing.sm },
+  payOption: {
+    borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md,
+    padding: Spacing.md, backgroundColor: Colors.bgCard,
+  },
+  payOptionActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '11' },
+  payTitle: { ...Typography.bodySemibold, fontSize: 14 },
+  paySub: { ...Typography.caption, fontSize: 12, marginTop: 2 },
   deliveryRow: {
     flexDirection: 'row',
     gap: Spacing.sm,

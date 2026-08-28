@@ -43,6 +43,18 @@ export function normalizeOrder(o: any): Order {
   };
 }
 
+export interface RazorpayOrderResponse {
+  razorpayOrderId: string;
+  /** Integer paise, computed server-side. */
+  amount: number;
+  currency: string;
+  keyId: string;
+  internalOrderId: string;
+}
+
+/** What POST /checkout/:id/complete accepts — see schema/checkoutValidationSchema.js. */
+export type PaymentMethod = 'COD' | 'CARD' | 'UPI' | 'WALLET' | 'NET_BANKING';
+
 export const orderService = {
   /** Buyer's orders. */
   async getMyOrders(): Promise<Order[]> {
@@ -80,9 +92,10 @@ export const orderService = {
     return res as { id: string };
   },
 
-  async getCheckoutSummary(): Promise<CheckoutSummary> {
+  async getCheckoutSummary(deliveryOptionId?: string): Promise<CheckoutSummary> {
+    const qs = deliveryOptionId ? `?deliveryOptionId=${encodeURIComponent(deliveryOptionId)}` : '';
     const res = await fetchApi<ApiResponse<CheckoutSummary> | CheckoutSummary>(
-      '/checkout/summary',
+      `/checkout/summary${qs}`,
       { requiresAuth: true },
     );
     if ('data' in res && res.data) return res.data;
@@ -99,12 +112,13 @@ export const orderService = {
 
   async completeCheckout(
     sessionId: string,
-    paymentMethod: string,
+    paymentMethod: PaymentMethod,
+    deliveryOptionId?: string,
   ): Promise<{ orderId?: string; id?: string }> {
     const res = await fetchApi<any>(`/checkout/${sessionId}/complete`, {
       method: 'POST',
       requiresAuth: true,
-      body: JSON.stringify({ paymentMethod }),
+      body: JSON.stringify({ paymentMethod, deliveryOptionId: deliveryOptionId || undefined }),
     });
     return res?.data ?? res;
   },
@@ -124,5 +138,60 @@ export const orderService = {
       method: 'DELETE',
       requiresAuth: true,
     });
+  },
+
+  // ── Razorpay ───────────────────────────────────────────
+  //
+  // The amount is recalculated server-side from the cart; nothing the
+  // client sends influences what is charged.
+
+  /** Whether online payment is configured, so the UI knows to offer it. */
+  async getRazorpayConfig(): Promise<{ keyId?: string; enabled: boolean }> {
+    try {
+      const res = await fetchApi<any>('/checkout/razorpay/config', { requiresAuth: true });
+      const d = res?.data ?? res;
+      return { keyId: d?.keyId, enabled: !!d?.keyId };
+    } catch {
+      return { enabled: false };
+    }
+  },
+
+  async createRazorpayOrder(payload: {
+    sessionId: string;
+    addressId: string;
+    deliveryOptionId?: string;
+  }): Promise<RazorpayOrderResponse> {
+    const res = await fetchApi<any>('/checkout/razorpay/create-order', {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify(payload),
+    });
+    return (res?.data ?? res) as RazorpayOrderResponse;
+  },
+
+  /** Server-side signature verification — the step that actually confirms the order. */
+  async verifyRazorpayPayment(payload: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    internalOrderId: string;
+  }): Promise<{ orderId?: string; id?: string }> {
+    const res = await fetchApi<any>('/checkout/razorpay/verify', {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify(payload),
+    });
+    return res?.data ?? res;
+  },
+
+  async getPaymentMethods(): Promise<string[]> {
+    try {
+      const res = await fetchApi<any>('/checkout/payment-methods', { requiresAuth: true });
+      const d = res?.data ?? res;
+      const list = Array.isArray(d) ? d : (d?.methods ?? d?.paymentMethods ?? []);
+      return list.map((m: any) => (typeof m === 'string' ? m : m.code ?? m.value ?? m.name));
+    } catch {
+      return [];
+    }
   },
 };
