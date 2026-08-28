@@ -108,9 +108,13 @@ export default function SellerDashboard() {
             <Text style={styles.actionIcon}>📦</Text>
             <Text style={styles.actionLabel}>Orders</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/seller/setup' as any)}>
-            <Text style={styles.actionIcon}>⚙️</Text>
-            <Text style={styles.actionLabel}>Settings</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/seller/reviews' as any)}>
+            <Text style={styles.actionIcon}>⭐</Text>
+            <Text style={styles.actionLabel}>Reviews</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/seller/royalties' as any)}>
+            <Text style={styles.actionIcon}>🧢</Text>
+            <Text style={styles.actionLabel}>Royalties</Text>
           </TouchableOpacity>
         </View>
 

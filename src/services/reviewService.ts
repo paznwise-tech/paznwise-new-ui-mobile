@@ -144,6 +144,21 @@ export const ReviewService = {
     }
   },
 
+  /** Reviews left on the signed-in seller's own products. */
+  async getSellerReviews(): Promise<Review[]> {
+    const res = await fetchApi<any>('/seller/reviews', { requiresAuth: true });
+    return toList(res).map(normalizeReview);
+  },
+
+  /** A seller's public reply to a review of their product. */
+  async replyToReview(reviewId: string, reply: string): Promise<void> {
+    await fetchApi(`/products/reviews/${reviewId}/reply`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify({ reply }),
+    });
+  },
+
   async getReviewSummary(productId: string): Promise<ReviewSummary> {
     const res = await fetchApi<any>(`/products/${productId}/review-summary`, {
       requiresAuth: false,

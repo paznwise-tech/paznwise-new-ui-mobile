@@ -13,6 +13,7 @@ import { useCart, useFavorites, useUser } from '@/context/AppContext';
 import { useProductDetail } from '@/hooks/useProducts';
 import { UserService, PublicUser } from '@/services/userService';
 import { ReviewService, Review } from '@/services/reviewService';
+import { ProductService } from '@/services/productService';
 import { API_BASE_URL } from '@/services/api';
 
 const { width } = Dimensions.get('window');
@@ -39,6 +40,7 @@ export default function ProductDetail() {
   const [distribution, setDistribution] = useState<Record<number, number>>({});
   const [canReview, setCanReview] = useState(false);
   const [helpfulIds, setHelpfulIds] = useState<string[]>([]);
+  const [merchandise, setMerchandise] = useState<any[]>([]);
 
   useEffect(() => {
     if (!product?.sellerId) return;
@@ -56,6 +58,15 @@ export default function ProductDetail() {
   }, [id]);
 
   useEffect(() => { loadReviews(); }, [loadReviews]);
+
+  // Approved merchandise licensed from this artwork. Empty for most
+  // products, so the section only appears when there is something to show.
+  useEffect(() => {
+    if (!id) return;
+    ProductService.getMerchandiseForProduct(String(id))
+      .then(setMerchandise)
+      .catch(() => setMerchandise([]));
+  }, [id]);
 
   // Eligibility is decided server-side (it checks the buyer actually
   // received the item), so the write entry only appears when it says yes.
@@ -350,6 +361,31 @@ export default function ProductDetail() {
                 )}
               </View>
 
+              {/* Merchandise licensed from this artwork */}
+              {merchandise.length > 0 && (
+                <View style={styles.merchSection}>
+                  <Text style={styles.reviewsTitle}>Available as merchandise</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                      {merchandise.map((m: any) => (
+                        <TouchableOpacity
+                          key={m.id}
+                          style={styles.merchCard}
+                          onPress={() => router.push(`/product/${m.id}` as any)}
+                        >
+                          <Text style={styles.merchTitle} numberOfLines={2}>{m.title}</Text>
+                          {m.price != null && (
+                            <Text style={styles.merchPrice}>
+                              ₹{Number(m.price).toLocaleString('en-IN')}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+
               {/* Rating distribution */}
               {reviewCount > 0 && (
                 <View style={styles.distribution}>
@@ -583,6 +619,13 @@ const styles = StyleSheet.create({
   tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
   tagBadge: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.sm, borderWidth: 1, borderColor: Colors.border },
   tagText: { ...Typography.caption, color: Colors.cream },
+  merchSection: { marginBottom: Spacing.lg },
+  merchCard: {
+    width: 120, padding: Spacing.sm, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+  },
+  merchTitle: { ...Typography.caption, fontSize: 12, color: Colors.cream },
+  merchPrice: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold, marginTop: 4 },
   distribution: { gap: 4, marginBottom: Spacing.md },
   distRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   distStar: { ...Typography.caption, fontSize: 11, width: 22 },

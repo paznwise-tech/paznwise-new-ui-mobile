@@ -36,6 +36,15 @@ export interface SellerDashboard {
   revenueByMonth: Array<{ date: string; revenue: number }>;
 }
 
+export interface MerchandiseRoyalty {
+  productId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  cumulativePayout: number;
+  /** Fraction, e.g. 0.1 for 10%. Steps down past a payout threshold. */
+  currentRate: number;
+}
+
 export const ProductService = {
   // GET /api/products — cursor-based, public
   async getMarketplaceProducts(params?: {
@@ -112,6 +121,31 @@ export const ProductService = {
   /** Hides a listing without deleting it or its order history. */
   async archive(productId: string): Promise<void> {
     await fetchApi(`/products/${productId}/archive`, { method: 'PATCH', requiresAuth: true });
+  },
+
+  /**
+   * Cumulative royalty payout per source artwork, with the rate currently
+   * applied. The rate steps down once an artwork passes a payout
+   * threshold, so both numbers matter to the artist.
+   */
+  async getMerchandiseRoyalties(): Promise<MerchandiseRoyalty[]> {
+    const res = await fetchApi<any>('/products/my/merchandise-royalties', { requiresAuth: true });
+    const d = res?.data ?? res;
+    const list: any[] = Array.isArray(d) ? d : [];
+    return list.map((r: any) => ({
+      productId: String(r.sourceProduct?.id ?? ''),
+      title: r.sourceProduct?.title ?? 'Artwork',
+      thumbnailUrl: r.sourceProduct?.thumbnailUrl ?? null,
+      cumulativePayout: Number(r.cumulativePayout ?? 0),
+      currentRate: Number(r.currentRate ?? 0),
+    }));
+  },
+
+  /** Approved merchandise licensed from one artwork. */
+  async getMerchandiseForProduct(productId: string): Promise<any[]> {
+    const res = await fetchApi<any>(`/products/${productId}/merchandise`, { requiresAuth: false });
+    const d = res?.data ?? res;
+    return Array.isArray(d) ? d : (d?.items ?? []);
   },
 
   async getProductOrders(productId: string): Promise<any[]> {
