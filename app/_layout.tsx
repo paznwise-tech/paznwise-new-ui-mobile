@@ -114,6 +114,8 @@ function RootNavigator() {
             <Stack.Screen name="reviews/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="reviews/write" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="rentals/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="rentals/[id]" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="rentals/request" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="notifications/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="settings/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="messages/index" options={{ animation: 'slide_from_right' }} />

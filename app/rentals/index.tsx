@@ -45,7 +45,7 @@ export default function MyRentalsScreen() {
     const endDate = new Date(item.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
     return (
-      <View style={styles.card}>
+      <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={() => router.push(`/rentals/${item.id}` as any)}>
         <View style={styles.headerRow}>
           <Text style={styles.refText}>Rental Ref #{item.bookingRef || item.id}</Text>
           <View style={[styles.statusBadge, getStatusStyle(item.status)]}>
@@ -66,7 +66,7 @@ export default function MyRentalsScreen() {
             <Text style={styles.amountText}>Total Paid: ₹{(Number(item.rentalAmount) || 0).toLocaleString('en-IN')}</Text>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

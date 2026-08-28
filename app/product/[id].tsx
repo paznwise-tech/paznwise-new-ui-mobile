@@ -129,6 +129,18 @@ export default function ProductDetail() {
     }
   }, [inCart, product, addToCart, requireSession]);
 
+  const handleRent = useCallback(() => {
+    if (!product || !requireSession()) return;
+    router.push({
+      pathname: '/rentals/request',
+      params: {
+        productId: String(product.id),
+        title: product.title,
+        dailyRate: String(product.rentalDailyRate ?? ''),
+      },
+    } as any);
+  }, [product, requireSession]);
+
   const handleBuyNow = useCallback(async () => {
     if (!product || !requireSession()) return;
     try {
@@ -482,6 +494,15 @@ export default function ProductDetail() {
             />
           </View>
         </View>
+
+        {/* Only when the owner has opted this artwork into rentals. */}
+        {product.rentalEligible && product.rentalDailyRate ? (
+          <TouchableOpacity style={styles.rentBtn} onPress={handleRent}>
+            <Text style={styles.rentBtnText}>
+              Rent from ₹{Number(product.rentalDailyRate).toLocaleString('en-IN')}/day
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* Added to Cart Modal */}
@@ -575,6 +596,11 @@ const styles = StyleSheet.create({
   writeReviewText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
   reviewActions: { flexDirection: 'row', gap: Spacing.lg, marginTop: Spacing.sm },
   reviewAction: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
+  rentBtn: {
+    marginTop: Spacing.sm, paddingVertical: Spacing.sm, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.gold + '66', borderRadius: Radius.md,
+  },
+  rentBtnText: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
   reviewsHeader: { marginTop: Spacing.lg, marginBottom: Spacing.sm },
   reviewsTitle: { ...Typography.heading, fontSize: 18, marginBottom: Spacing.xs },
   reviewsSummary: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
