@@ -56,6 +56,8 @@ export const ProductService = {
     search?: string;
     /** See src/product/product.repository.js — anything else falls back to newest. */
     sort?: 'newest' | 'price-asc' | 'price-desc' | 'popular' | 'rating';
+    /** Only this seller's listings. */
+    sellerId?: string;
   }): Promise<ProductListResponse> {
     const q = new URLSearchParams();
     if (params?.cursor)     q.append('cursor', params.cursor);
@@ -64,6 +66,7 @@ export const ProductService = {
     if (params?.status)     q.append('status', params.status);
     if (params?.search)     q.append('search', params.search);
     if (params?.sort)       q.append('sort', params.sort);
+    if (params?.sellerId)   q.append('sellerId', params.sellerId);
 
     const qs = q.toString();
     return fetchApi<ProductListResponse>(`/products${qs ? `?${qs}` : ''}`, {

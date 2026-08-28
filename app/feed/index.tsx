@@ -28,16 +28,25 @@ export default function FeedIndex() {
     setRefreshing(false);
   }, [fetchTrendingFeed]);
 
-  // Filter posts based on search query
-  const filteredPosts = trendingPosts.filter(post => {
-    const query = search.toLowerCase();
-    const title = post.title?.toLowerCase() || '';
-    const desc = post.description?.toLowerCase() || '';
-    const authorName = post.artist?.name?.toLowerCase() || post.profileName?.toLowerCase() || '';
-    const style = post.style?.toLowerCase() || '';
-    const cat = post.category?.toLowerCase() || '';
-    return title.includes(query) || desc.includes(query) || authorName.includes(query) || style.includes(query) || cat.includes(query);
-  });
+  /**
+   * Narrows the trending posts already on screen.
+   *
+   * This is a filter, not a search: it can only ever match what has been
+   * loaded, so it is labelled as filtering the feed and hands off to the
+   * real search — which queries every post server-side — on submit.
+   */
+  const filteredPosts = search.trim()
+    ? trendingPosts.filter(post => {
+        const query = search.toLowerCase();
+        return (
+          (post.title?.toLowerCase() ?? '').includes(query) ||
+          (post.description?.toLowerCase() ?? '').includes(query) ||
+          (post.artist?.name?.toLowerCase() ?? post.profileName?.toLowerCase() ?? '').includes(query) ||
+          (post.style?.toLowerCase() ?? '').includes(query) ||
+          (post.category?.toLowerCase() ?? '').includes(query)
+        );
+      })
+    : trendingPosts;
 
   const renderPostItem = ({ item }: { item: FeedPost }) => {
     const imageUri = item.imageUrls?.[0];
@@ -131,10 +140,21 @@ export default function FeedIndex() {
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search community posts, styles, creators..."
+          placeholder="Filter this feed…"
           placeholderTextColor={Colors.creamFaint}
           style={styles.searchInput}
+          returnKeyType="search"
+          onSubmitEditing={() =>
+            search.trim() && router.push({ pathname: '/search', params: { q: search.trim() } } as any)
+          }
         />
+        {search.trim() ? (
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: '/search', params: { q: search.trim() } } as any)}
+          >
+            <Text style={styles.searchAll}>Search all →</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {feedLoading && filteredPosts.length === 0 ? (
@@ -167,6 +187,7 @@ export default function FeedIndex() {
 }
 
 const styles = StyleSheet.create({
+  searchAll: { ...Typography.bodySemibold, fontSize: 12, color: Colors.gold, paddingHorizontal: Spacing.sm },
   container: {
     flex: 1,
     backgroundColor: Colors.bg,

@@ -4,7 +4,7 @@ import {
   TextInput, ActivityIndicator, Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import {
@@ -23,7 +23,9 @@ const PLACEHOLDER_AVATAR = 'https://images.unsplash.com/photo-1494790108377-be9c
 const FALLBACK_IMG = 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=200';
 
 export default function GlobalSearch() {
-  const [query, setQuery]             = useState('');
+  // Pre-filled when arriving from the feed's filter box.
+  const { q } = useLocalSearchParams<{ q?: string }>();
+  const [query, setQuery]             = useState(q ?? '');
   const [tab, setTab]                 = useState<Tab>('All');
   const [loading, setLoading]         = useState(false);
   const [artists, setArtists]         = useState<UserResult[]>([]);

@@ -58,9 +58,12 @@ export default function PublicProfile() {
     if (!id || !profile) return;
     setPostsLoading(true);
     
-    ProductService.getMarketplaceProducts().then(productsRes => {
+    // Filtered by the API. This used to fetch the entire catalogue and keep
+    // whatever happened to be this seller's, so a profile showed only the
+    // listings that fell in the first page of everything.
+    ProductService.getMarketplaceProducts({ sellerId: String(id), limit: 50 }).then(productsRes => {
       const userPosts = profile.posts || [];
-      const userProducts = ((productsRes as any)?.data || []).filter((p: any) => p.sellerId === id);
+      const userProducts = ((productsRes as any)?.data || []);
       
       const mappedProducts = userProducts.map((prod: any) => ({
         id: prod.id,

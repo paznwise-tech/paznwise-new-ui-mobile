@@ -140,6 +140,8 @@ export const EventService = {
     page?: number;
     limit?: number;
     search?: string;
+    /** Only events hosted by this artist. */
+    artistId?: string;
   }): Promise<Event[]> {
     const q = new URLSearchParams();
     if (params?.page)                                  q.append('page', String(params.page));
@@ -147,6 +149,7 @@ export const EventService = {
     if (params?.category && params.category !== 'All') q.append('category', params.category);
     if (params?.city && params.city !== 'All Cities')  q.append('city', params.city);
     if (params?.search)                                q.append('search', params.search);
+    if (params?.artistId)                              q.append('artistId', params.artistId);
 
     const qs = q.toString();
     const res = await fetchApi<EventListResponse>(`/events${qs ? `?${qs}` : ''}`, {

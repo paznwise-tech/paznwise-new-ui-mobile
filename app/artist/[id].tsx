@@ -8,6 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { UserService, PublicUser } from '@/services/userService';
+import { EventService } from '@/services/eventService';
+import type { Event } from '@/types';
 
 const { width } = Dimensions.get('window');
 
@@ -17,6 +19,8 @@ const PLACEHOLDER_AVATAR = 'https://images.unsplash.com/photo-1494790108377-be9c
 export default function ArtistProfile() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [tab, setTab]               = useState<'works' | 'about' | 'events'>('works');
+  const [artistEvents, setArtistEvents] = useState<Event[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [following, setFollowing]   = useState(false);
   const [profile, setProfile]       = useState<PublicUser | null>(null);
   const [loading, setLoading]       = useState(true);
@@ -74,6 +78,16 @@ export default function ArtistProfile() {
   const totalLikes  = profile?.totalLikes      ?? 0;
 
   const coverImg    = posts[0]?.imageUrls?.[0] ?? posts[0]?.mediaUrls?.[0] ?? PLACEHOLDER_COVER;
+
+  // Only fetched when the tab is opened; most visitors never open it.
+  useEffect(() => {
+    if (tab !== 'events' || !id || artistEvents.length > 0) return;
+    setEventsLoading(true);
+    EventService.getEvents({ artistId: String(id), limit: 20 })
+      .then(setArtistEvents)
+      .catch(() => setArtistEvents([]))
+      .finally(() => setEventsLoading(false));
+  }, [tab, id]);
 
   const fmtCount = (n: number) =>
     n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
@@ -201,7 +215,28 @@ export default function ArtistProfile() {
 
         {tab === 'events' && (
           <View style={styles.aboutSection}>
-            <Text style={styles.bio}>No exhibitions listed.</Text>
+            {eventsLoading ? (
+              <ActivityIndicator color={Colors.gold} />
+            ) : artistEvents.length === 0 ? (
+              <Text style={styles.bio}>No exhibitions listed.</Text>
+            ) : (
+              artistEvents.map(e => (
+                <TouchableOpacity
+                  key={e.id}
+                  style={styles.eventRow}
+                  onPress={() => router.push(`/events/${e.id}` as any)}
+                >
+                  <Image source={{ uri: e.img }} style={styles.eventThumb} contentFit="cover" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.eventTitle} numberOfLines={1}>{e.title}</Text>
+                    <Text style={styles.eventMeta}>
+                      {e.date}{e.city ? ` · ${e.city}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={styles.eventPrice}>{e.price === 0 ? 'Free' : `₹${e.price}`}</Text>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         )}
       </ScrollView>
@@ -210,6 +245,14 @@ export default function ArtistProfile() {
 }
 
 const styles = StyleSheet.create({
+  eventRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  eventThumb: { width: 48, height: 48, borderRadius: Radius.sm },
+  eventTitle: { ...Typography.bodySemibold, fontSize: 14 },
+  eventMeta: { ...Typography.caption, fontSize: 12, marginTop: 2 },
+  eventPrice: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
   cover: { width, height: 180, position: 'relative' },
   coverImg: { width: '100%', height: '100%' },
   backBtn: { position: 'absolute', top: 48, left: Spacing.md, width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(13,27,42,0.7)', alignItems: 'center', justifyContent: 'center' },
