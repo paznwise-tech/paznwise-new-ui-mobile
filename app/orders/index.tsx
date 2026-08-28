@@ -1,215 +1,294 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, Alert,
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { OrderService, ApiOrder } from '@/services/orderService';
+import { orderService } from '@/services/orderService';
+import type { Order } from '@/types';
 
-const STATUS_COLORS: Record<string, string> = {
-  processing: Colors.warning,
-  confirmed:  Colors.success,
-  shipped:    '#3B82F6',
-  delivered:  Colors.gold,
-  cancelled:  Colors.error,
-  returned:   Colors.creamDim,
-};
-
-const STATUS_ICON: Record<string, string> = {
-  processing: '⏳',
-  confirmed:  '✅',
-  shipped:    '🚚',
-  delivered:  '📦',
-  cancelled:  '❌',
-  returned:   '↩️',
-};
-
-function formatDate(iso?: string): string {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric',
-  });
-}
-
-export default function OrderHistory() {
-  const [orders, setOrders]       = useState<ApiOrder[]>([]);
-  const [loading, setLoading]     = useState(true);
+export default function MyOrdersScreen() {
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [orders, setOrders] = useState<Order[]>([]);
 
-  const load = useCallback(async () => {
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = async () => {
     try {
-      const data = await OrderService.getMyOrders();
+      const data = await orderService.getMyOrders();
       setOrders(data);
-    } catch (e: any) {
-      console.warn('[Orders]', e.message);
+    } catch (err: any) {
+      console.warn('[MyOrders] Error fetching orders:', err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }, []);
+  };
 
-  useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
-
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = () => {
     setRefreshing(true);
-    load().finally(() => setRefreshing(false));
-  }, [load]);
+    fetchOrders();
+  };
 
-  const handleCancel = useCallback((orderId: string) => {
-    Alert.alert('Cancel Order', 'Are you sure you want to cancel this order?', [
-      { text: 'No', style: 'cancel' },
-      {
-        text: 'Yes, Cancel',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await OrderService.cancelOrder(orderId);
-            setOrders(prev => prev.map(o =>
-              o.id === orderId ? { ...o, status: 'cancelled' } : o
-            ));
-          } catch (e: any) {
-            Alert.alert('Error', e.message ?? 'Failed to cancel order');
-          }
-        },
-      },
-    ]);
-  }, []);
-
-  const renderItem = useCallback(({ item }: { item: ApiOrder }) => {
-    const status = (item.status ?? 'processing').toLowerCase();
-    const color  = STATUS_COLORS[status] ?? STATUS_COLORS.processing;
-    const icon   = STATUS_ICON[status] ?? '📦';
-    const canCancel = status === 'processing' || status === 'confirmed';
+  const renderOrderItem = ({ item }: { item: Order }) => {
+    const items = item.products || item.items || item.orderItems || [];
+    const firstItem = items[0];
+    const imgUrl = firstItem?.productImage || firstItem?.imageUrl || firstItem?.product?.productImages?.[0];
+    const dateStr = item.createdAt
+      ? new Date(item.createdAt).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : '';
 
     return (
-      <View style={styles.card}>
+      <TouchableOpacity
+        style={styles.orderCard}
+        onPress={() =>
+          router.push({
+            pathname: '/profile/orders/[id]' as any,
+            params: { id: (item.orderId || item.id).toString() },
+          })
+        }
+        activeOpacity={0.8}
+      >
         <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.orderId}>#{item.id.slice(-8).toUpperCase()}</Text>
-            <Text style={styles.orderDate}>{formatDate(item.createdAt)}</Text>
-          </View>
-          <View style={[styles.statusBadge, { backgroundColor: color + '22', borderColor: color }]}>
-            <Text style={styles.statusIcon}>{icon}</Text>
-            <Text style={[styles.statusText, { color }]}>{status}</Text>
+          <Text style={styles.orderId}>Order #{item.invoiceNumber || item.orderId || item.id}</Text>
+          <View style={[styles.statusBadge, getStatusStyle(item.status)]}>
+            <Text style={styles.statusText}>{item.status || 'PROCESSING'}</Text>
           </View>
         </View>
 
-        {item.items && item.items.length > 0 && (
-          <View style={styles.itemsList}>
-            {item.items.slice(0, 2).map((it, idx) => (
-              <Text key={idx} style={styles.itemLine} numberOfLines={1}>
-                • {it.title ?? `Product #${it.productId.slice(-6)}`} × {it.quantity}
-              </Text>
-            ))}
-            {item.items.length > 2 && (
-              <Text style={styles.moreItems}>+{item.items.length - 2} more items</Text>
-            )}
-          </View>
-        )}
-
-        <View style={styles.cardFooter}>
-          <View>
-            {item.totalAmount !== undefined && (
-              <Text style={styles.total}>₹{item.totalAmount.toLocaleString('en-IN')}</Text>
-            )}
-            {item.estimatedDelivery && !['delivered', 'cancelled', 'returned'].includes(status) && (
-              <Text style={styles.delivery}>Est. by {item.estimatedDelivery}</Text>
-            )}
-            {item.paymentMethod && (
-              <Text style={styles.payMethod}>{item.paymentMethod}</Text>
-            )}
-          </View>
-          {canCancel && (
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancel(item.id)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
+        <View style={styles.cardBody}>
+          {imgUrl ? (
+            <Image source={{ uri: imgUrl }} style={styles.artworkImg} />
+          ) : (
+            <View style={[styles.artworkImg, { backgroundColor: Colors.bgInput }]} />
           )}
+
+          <View style={{ flex: 1 }}>
+            <Text style={styles.itemTitle} numberOfLines={1}>
+              {firstItem?.productName || firstItem?.title || firstItem?.product?.title || 'Purchased Artwork'}
+            </Text>
+            {items.length > 1 && (
+              <Text style={styles.moreItemsText}>+{items.length - 1} more item(s)</Text>
+            )}
+            <Text style={styles.orderDate}>{dateStr}</Text>
+          </View>
+
+          <Text style={styles.totalPrice}>₹{(item.totalAmount || 0).toLocaleString('en-IN')}</Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
-  }, [handleCancel]);
+  };
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-      <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>My Orders</Text>
-          <View style={{ width: 24 }} />
-        </View>
-      </SafeAreaView>
+    <SafeAreaView edges={['top']} style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>←</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>My Orders</Text>
+        <View style={{ width: 36 }} />
+      </View>
 
       {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator color={Colors.gold} size="large" />
+        <View style={styles.centerContainer}>
+          <ActivityIndicator size="large" color={Colors.gold} />
+          <Text style={styles.loadingText}>Loading Orders...</Text>
         </View>
       ) : (
         <FlatList
           data={orders}
-          keyExtractor={i => i.id}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          renderItem={renderItem}
+          keyExtractor={(item) => (item.orderId || item.id).toString()}
+          renderItem={renderOrderItem}
+          contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.gold} />
           }
           ListEmptyComponent={
-            <View style={{ padding: Spacing.xl, alignItems: 'center' }}>
-              <Text style={{ fontSize: 48 }}>🛍️</Text>
-              <Text style={styles.emptyTitle}>No orders yet</Text>
-              <Text style={styles.emptyText}>Your art purchases will appear here</Text>
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyTitle}>No Orders Yet</Text>
+              <Text style={styles.emptySub}>When you buy original artworks or merchandise, your order tracking will appear here.</Text>
               <TouchableOpacity
-                style={{ marginTop: Spacing.md }}
-                onPress={() => router.push('/(tabs)/browse' as any)}
+                style={styles.browseBtn}
+                onPress={() => router.replace('/(tabs)/browse')}
               >
-                <Text style={{ color: Colors.gold, fontSize: 14 }}>Shop Now →</Text>
+                <Text style={styles.browseBtnText}>Explore Marketplace</Text>
               </TouchableOpacity>
             </View>
           }
         />
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
+function getStatusStyle(status?: string) {
+  switch (status?.toUpperCase()) {
+    case 'DELIVERED':
+    case 'COMPLETED':
+      return { backgroundColor: '#2E7D3222', borderColor: '#2E7D32' };
+    case 'SHIPPED':
+      return { backgroundColor: '#0288D122', borderColor: '#0288D1' };
+    case 'CANCELLED':
+      return { backgroundColor: '#D32F2F22', borderColor: '#D32F2F' };
+    default:
+      return { backgroundColor: '#F57C0022', borderColor: '#F57C00' };
+  }
+}
+
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: Colors.bg,
+  },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
-  backIcon: { color: Colors.gold, fontSize: 22 },
-  title: { ...Typography.display, fontSize: 22 },
-  list: { paddingHorizontal: Spacing.md, paddingBottom: 100, gap: Spacing.md },
-  card: {
-    backgroundColor: Colors.bgCard, borderRadius: Radius.lg,
-    borderWidth: 1, borderColor: Colors.border, padding: Spacing.md, gap: Spacing.md,
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  orderId: { ...Typography.bodySemibold, fontSize: 16, fontFamily: 'Inter_700Bold' },
-  orderDate: { ...Typography.caption, fontSize: 12, marginTop: 2 },
+  backBtnText: {
+    fontSize: 20,
+    color: Colors.cream,
+  },
+  headerTitle: {
+    ...Typography.display,
+    fontSize: 18,
+    color: Colors.cream,
+  },
+  centerContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    ...Typography.bodySemibold,
+    color: Colors.cream,
+    marginTop: Spacing.md,
+  },
+  listContent: {
+    padding: Spacing.md,
+    paddingBottom: 40,
+  },
+  orderCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.md,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  orderId: {
+    ...Typography.bodyBold,
+    fontSize: 13,
+    color: Colors.gold,
+  },
   statusBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: Spacing.sm, paddingVertical: 4,
-    borderRadius: Radius.sm, borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: Radius.sm,
+    borderWidth: 1,
   },
-  statusIcon: { fontSize: 12 },
-  statusText: { ...Typography.label, fontSize: 9 },
-  itemsList: {
-    backgroundColor: Colors.bgElevated, borderRadius: Radius.sm,
-    padding: Spacing.sm, gap: 2,
+  statusText: {
+    ...Typography.caption,
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.cream,
   },
-  itemLine: { ...Typography.caption, fontSize: 12 },
-  moreItems: { ...Typography.caption, fontSize: 11, color: Colors.gold },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  total: { ...Typography.bodyBold, fontSize: 18, color: Colors.gold },
-  delivery: { ...Typography.caption, fontSize: 11, marginTop: 2 },
-  payMethod: { ...Typography.caption, fontSize: 11, marginTop: 1 },
-  cancelBtn: {
-    paddingHorizontal: Spacing.md, paddingVertical: 6,
-    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.error,
+  cardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: 4,
   },
-  cancelText: { ...Typography.label, fontSize: 10, color: Colors.error },
-  emptyTitle: { ...Typography.heading, fontSize: 20, marginTop: Spacing.md },
-  emptyText: { ...Typography.caption, fontSize: 14, marginTop: 4, textAlign: 'center' },
+  artworkImg: {
+    width: 50,
+    height: 50,
+    borderRadius: Radius.md,
+  },
+  itemTitle: {
+    ...Typography.bodyBold,
+    fontSize: 13,
+    color: Colors.cream,
+  },
+  moreItemsText: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Colors.gold,
+  },
+  orderDate: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: Colors.creamDim,
+    marginTop: 2,
+  },
+  totalPrice: {
+    ...Typography.bodyBold,
+    fontSize: 15,
+    color: Colors.cream,
+  },
+  emptyBox: {
+    paddingVertical: 60,
+    alignItems: 'center',
+    paddingHorizontal: Spacing.lg,
+  },
+  emptyTitle: {
+    ...Typography.display,
+    fontSize: 20,
+    color: Colors.cream,
+    marginBottom: 4,
+  },
+  emptySub: {
+    ...Typography.body,
+    fontSize: 13,
+    color: Colors.creamDim,
+    textAlign: 'center',
+    marginBottom: Spacing.lg,
+    lineHeight: 18,
+  },
+  browseBtn: {
+    backgroundColor: Colors.gold,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+  },
+  browseBtnText: {
+    ...Typography.bodyBold,
+    fontSize: 14,
+    color: '#0D1B2A',
+  },
 });
