@@ -8,17 +8,36 @@ import { FavoritesService } from '@/services/favoritesService';
 import { connectSocket, disconnectSocket } from '@/services/socket';
 import { clearAuthUserIdCache } from '@/services/currentUser';
 import { authEvents } from '@/api/authEvents';
+import type { CartLine } from '@/services/cartService';
+import {
+  useCart as useCartQuery,
+  useAddToCart,
+  useUpdateCartQuantity,
+  useRemoveCartItem,
+  useClearCart,
+  useRefreshCart,
+  cartTotal as calcCartTotal,
+  cartCount as calcCartCount,
+} from '@/hooks/useCartQueries';
 
 // ─────────────────────────────────────────────────────────
 // Context Type Definitions
 // ─────────────────────────────────────────────────────────
 
 interface CartContextType {
-  cart: CartItem[];
-  addToCart: (item: Artwork) => void;
-  removeFromCart: (id: number) => void;
-  clearCart: () => void;
+  cart: CartLine[];
+  /** Adds to whatever quantity is already there. */
+  addToCart: (productId: string | number, quantity?: number) => Promise<unknown>;
+  /** Sets an absolute quantity; anything below 1 removes the line. */
+  updateQuantity: (itemId: string, quantity: number) => Promise<unknown>;
+  removeFromCart: (itemId: string) => Promise<unknown>;
+  clearCart: () => Promise<unknown>;
+  /** Re-reads the cart after the server changed it, e.g. on order placement. */
+  refreshCart: () => Promise<unknown>;
   cartTotal: number;
+  /** Sum of quantities, for the badge — not the number of lines. */
+  cartCount: number;
+  cartLoading: boolean;
 }
 
 interface FavoritesContextType {
@@ -223,28 +242,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     loadProfile().catch(() => {});
   }, [loadProfile]);
 
-  // ── Cart state ──────────────────────────────────────────
-  const [cart, setCart] = useState<CartItem[]>([]);
+  // ── Cart ────────────────────────────────────────────────
+  // Server-backed. The cart endpoints are behind `authenticate`, so it is
+  // only fetched once there is a session; a guest sees an empty cart and is
+  // sent to sign in when they try to add.
+  const { data: cartLines, isLoading: cartLoading } = useCartQuery(status === 'signedIn');
+  const addToCartMutation = useAddToCart();
+  const updateQuantityMutation = useUpdateCartQuantity();
+  const removeCartItemMutation = useRemoveCartItem();
+  const clearCartMutation = useClearCart();
+  const refreshCart = useRefreshCart();
 
-  const addToCart = useCallback((item: Artwork) => {
-    setCart(prev => {
-      // Avoid duplicate cart additions
-      if (prev.some(cartItem => cartItem.id === item.id)) return prev;
-      return [...prev, { ...item, addedAt: new Date().toISOString() }];
-    });
-  }, []);
+  const cart = useMemo(() => cartLines ?? [], [cartLines]);
 
-  const removeFromCart = useCallback((id: number) => {
-    setCart(prev => prev.filter(item => item.id !== id));
-  }, []);
+  const addToCart = useCallback(
+    (productId: string | number, quantity = 1) =>
+      addToCartMutation.mutateAsync({ productId: String(productId), quantity }),
+    [addToCartMutation],
+  );
 
-  const clearCart = useCallback(() => {
-    setCart([]);
-  }, []);
+  const updateQuantity = useCallback(
+    (itemId: string, quantity: number) =>
+      quantity < 1
+        ? removeCartItemMutation.mutateAsync({ itemId })
+        : updateQuantityMutation.mutateAsync({ itemId, quantity }),
+    [updateQuantityMutation, removeCartItemMutation],
+  );
 
-  const cartTotal = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.price, 0);
-  }, [cart]);
+  const removeFromCart = useCallback(
+    (itemId: string) => removeCartItemMutation.mutateAsync({ itemId }),
+    [removeCartItemMutation],
+  );
+
+  const clearCart = useCallback(() => clearCartMutation.mutateAsync(undefined), [clearCartMutation]);
+
+  const cartTotal = useMemo(() => calcCartTotal(cart), [cart]);
+  const cartCount = useMemo(() => calcCartCount(cart), [cart]);
 
   // ── Favorites state ─────────────────────────────────────
   const [favorites, setFavorites] = useState<number[]>([]);
@@ -433,7 +466,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [feedPosts, trendingPosts, followingPosts, applyLikeState]);
 
   // ── Memoized Context Values ─────────────────────────────
-  const cartValue = useMemo(() => ({ cart, addToCart, removeFromCart, clearCart, cartTotal }), [cart, addToCart, removeFromCart, clearCart, cartTotal]);
+  const cartValue = useMemo(
+    () => ({ cart, addToCart, updateQuantity, removeFromCart, clearCart, refreshCart, cartTotal, cartCount, cartLoading }),
+    [cart, addToCart, updateQuantity, removeFromCart, clearCart, refreshCart, cartTotal, cartCount, cartLoading],
+  );
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
   const bookingsValue = useMemo(() => ({ bookings, addBooking }), [bookings, addBooking]);
   const userValue = useMemo(() => ({ user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession }), [user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession]);

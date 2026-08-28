@@ -18,7 +18,9 @@ import {
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '@/constants/theme';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider, useUser } from '@/context/AppContext';
+import { queryClient } from '@/api/queryClient';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -37,9 +39,11 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <AppProvider>
-      <RootNavigator />
-    </AppProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <RootNavigator />
+      </AppProvider>
+    </QueryClientProvider>
   );
 }
 

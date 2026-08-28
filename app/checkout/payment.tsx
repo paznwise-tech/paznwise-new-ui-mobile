@@ -21,7 +21,7 @@ type PaymentMethod = 'UPI' | 'CARD' | 'NET_BANKING' | 'COD';
 
 export default function PaymentScreen() {
   const params = useLocalSearchParams<{ sessionId: string; addressId: string; total: string }>();
-  const { clearCart } = useCart();
+  const { refreshCart } = useCart();
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('UPI');
   const [upiId, setUpiId] = useState('');
@@ -42,7 +42,8 @@ export default function PaymentScreen() {
     setPlacing(true);
     try {
       const res = await orderService.completeCheckout(params.sessionId, paymentMethod);
-      clearCart();
+      // Placing the order empties the cart server-side; just re-read it.
+      refreshCart();
 
       const orderId = res.orderId || res.id || 'unknown';
       router.replace({

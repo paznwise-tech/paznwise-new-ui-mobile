@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, Modal, ActivityIndicator, NativeSyntheticEvent, NativeScrollEvent,
+  Dimensions, Modal, ActivityIndicator, NativeSyntheticEvent, NativeScrollEvent, Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,7 +9,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { StarRow } from '@/components/ui/StarRow';
-import { useCart, useFavorites } from '@/context/AppContext';
+import { useCart, useFavorites, useUser } from '@/context/AppContext';
 import { useProductDetail } from '@/hooks/useProducts';
 import { UserService, PublicUser } from '@/services/userService';
 import { ReviewService, Review } from '@/services/reviewService';
@@ -21,6 +21,7 @@ export default function ProductDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { product, loading, error } = useProductDetail(id);
   const { cart, addToCart } = useCart();
+  const { status } = useUser();
   const { isFavorite, toggleFavorite } = useFavorites();
 
   const [tab, setTab] = useState<'about' | 'details' | 'policies'>('about');
@@ -51,7 +52,7 @@ export default function ProductDetail() {
   }, [id]);
 
   const liked = product ? isFavorite(Number(product.id)) : false;
-  const inCart = product ? cart.some(c => c.id === Number(product.id)) : false;
+  const inCart = product ? cart.some(c => c.productId === String(product.id)) : false;
 
   const getImageUrl = (url?: string) => {
     if (!url) return 'https://via.placeholder.com/400?text=No+Image';
@@ -63,35 +64,37 @@ export default function ProductDetail() {
     if (product) toggleFavorite(Number(product.id));
   }, [product, toggleFavorite]);
 
-  const handleCartPress = useCallback(() => {
+  // The cart endpoints require a session, so a guest is sent to sign in at
+  // the point they act rather than being blocked from browsing.
+  const requireSession = useCallback(() => {
+    if (status === 'signedIn') return true;
+    router.push('/(auth)/login');
+    return false;
+  }, [status]);
+
+  const handleCartPress = useCallback(async () => {
     if (inCart) {
       router.push('/product/cart' as any);
-    } else if (product) {
-      addToCart({
-        id: Number(product.id) || Date.now(),
-        title: product.title,
-        price: product.price,
-        artist: product.brand || 'Artist',
-        location: 'Global',
-        img: getImageUrl(product.thumbnailUrl ?? product.productImages?.[0] ?? product.images?.[0]),
-      });
+      return;
+    }
+    if (!product || !requireSession()) return;
+    try {
+      await addToCart(product.id);
       setShowCartModal(true);
+    } catch (e: any) {
+      Alert.alert('Could not add to cart', e?.message ?? 'Please try again.');
     }
-  }, [inCart, product, addToCart]);
+  }, [inCart, product, addToCart, requireSession]);
 
-  const handleBuyNow = useCallback(() => {
-    if (product) {
-      addToCart({
-        id: Number(product.id) || Date.now(),
-        title: product.title,
-        price: product.price,
-        artist: product.brand || 'Artist',
-        location: 'Global',
-        img: getImageUrl(product.thumbnailUrl ?? product.productImages?.[0] ?? product.images?.[0]),
-      });
-      router.push('/product/cart' as any);
+  const handleBuyNow = useCallback(async () => {
+    if (!product || !requireSession()) return;
+    try {
+      if (!inCart) await addToCart(product.id);
+      router.push('/checkout' as any);
+    } catch (e: any) {
+      Alert.alert('Could not continue', e?.message ?? 'Please try again.');
     }
-  }, [product, addToCart]);
+  }, [product, inCart, addToCart, requireSession]);
 
   const handleCarouselScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / width);

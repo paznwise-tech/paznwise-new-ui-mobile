@@ -24,7 +24,7 @@ import type { Address, AddressPayload, CheckoutSummary } from '@/types';
 import { useCart } from '@/context/AppContext';
 
 export default function CheckoutScreen() {
-  const { cart, clearCart, cartTotal } = useCart();
+  const { cart, cartTotal } = useCart();
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
 

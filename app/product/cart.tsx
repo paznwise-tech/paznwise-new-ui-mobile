@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
@@ -11,13 +11,12 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { useCart } from '@/context/AppContext';
 import { CouponService, AppliedCoupon } from '@/services/couponService';
-import type { CartItem } from '@/types';
 
 const PLATFORM_FEE = 49;
 
 
 export default function Cart() {
-  const { cart, removeFromCart, cartTotal, clearCart } = useCart();
+  const { cart, removeFromCart, updateQuantity, cartTotal, cartLoading } = useCart();
 
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
@@ -68,7 +67,11 @@ export default function Cart() {
         </View>
       </SafeAreaView>
 
-      {isEmpty ? (
+      {cartLoading ? (
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator color={Colors.gold} size="large" />
+        </View>
+      ) : isEmpty ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🖼️</Text>
           <Text style={styles.emptyTitle}>Your Cart is Empty</Text>
@@ -86,10 +89,34 @@ export default function Cart() {
                   <Image source={{ uri: item.img }} style={styles.itemImg} contentFit="cover" transition={200} />
                   <View style={styles.itemBody}>
                     <Text style={styles.itemTitle} numberOfLines={2}>{item.title}</Text>
-                    <Text style={styles.itemArtist}>{item.artist}</Text>
-                    {item.medium && <Text style={styles.itemMedium}>{item.medium}</Text>}
+                    <Text style={styles.itemPrice}>
+                      ₹{(item.price * item.quantity).toLocaleString('en-IN')}
+                      {item.quantity > 1 && (
+                        <Text style={styles.itemUnitPrice}>
+                          {'  '}₹{item.price.toLocaleString('en-IN')} each
+                        </Text>
+                      )}
+                    </Text>
                     <View style={styles.itemFooter}>
-                      <Text style={styles.itemPrice}>₹{item.price.toLocaleString('en-IN')}</Text>
+                      <View style={styles.qtyRow}>
+                        <TouchableOpacity
+                          style={styles.qtyBtn}
+                          onPress={() => updateQuantity(item.id, item.quantity - 1)}
+                        >
+                          <Text style={styles.qtyBtnText}>−</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.qtyValue}>{item.quantity}</Text>
+                        <TouchableOpacity
+                          style={[
+                            styles.qtyBtn,
+                            item.stock !== undefined && item.quantity >= item.stock && styles.qtyBtnDisabled,
+                          ]}
+                          disabled={item.stock !== undefined && item.quantity >= item.stock}
+                          onPress={() => updateQuantity(item.id, item.quantity + 1)}
+                        >
+                          <Text style={styles.qtyBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
                       <TouchableOpacity onPress={() => removeFromCart(item.id)}>
                         <Text style={styles.removeText}>Remove</Text>
                       </TouchableOpacity>
@@ -206,6 +233,16 @@ const styles = StyleSheet.create({
   itemImg: { width: 110, height: 110 },
   itemBody: { flex: 1, padding: Spacing.md, gap: 3 },
   itemTitle: { ...Typography.heading, fontSize: 16, lineHeight: 20 },
+  itemUnitPrice: { ...Typography.caption, fontSize: 11, color: Colors.creamDim },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  qtyBtn: {
+    width: 28, height: 28, borderRadius: Radius.sm,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  qtyBtnDisabled: { opacity: 0.35 },
+  qtyBtnText: { ...Typography.bodySemibold, fontSize: 16, color: Colors.gold, lineHeight: 18 },
+  qtyValue: { ...Typography.bodySemibold, fontSize: 14, minWidth: 18, textAlign: 'center' },
   itemArtist: { ...Typography.caption, fontSize: 12 },
   itemMedium: { ...Typography.caption, fontSize: 11, color: Colors.creamFaint },
   itemFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: Spacing.xs },

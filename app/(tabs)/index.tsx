@@ -92,7 +92,7 @@ function CategoryBar() {
 export default function Home() {
   const [performers, setPerformers] = useState<Array<Performer & { serviceId: string }>>([]);
   const [performersLoading, setPerformersLoading] = useState(true);
-  const { cart } = useCart();
+  const { cartCount } = useCart();
   const { user } = useUser();
   const { feedPosts, trendingPosts, feedLoading, feedError, fetchPersonalisedFeed, fetchTrendingFeed, togglePostLike, likePost } = useFeed();
 
@@ -250,9 +250,9 @@ export default function Home() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.cartBtn} onPress={() => router.push('/product/cart' as any)}>
               <Text style={styles.cartIcon}>🛒</Text>
-              {cart.length > 0 && (
+              {cartCount > 0 && (
                 <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>{cart.length}</Text>
+                  <Text style={styles.cartBadgeText}>{cartCount > 99 ? '99+' : cartCount}</Text>
                 </View>
               )}
             </TouchableOpacity>

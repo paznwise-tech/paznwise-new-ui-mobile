@@ -37,7 +37,8 @@
           "photosPermission": "Allow Paznwise to access your photos to upload product images.",
           "cameraPermission": "Allow Paznwise to use your camera to take product photos."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "scheme": "paznwise",
     "experiments": {
