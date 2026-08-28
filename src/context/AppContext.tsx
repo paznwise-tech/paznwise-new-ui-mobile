@@ -67,6 +67,7 @@ interface UserContextType {
   loadProfile: () => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => void;
+  switchRole: (role: 'BUYER' | 'ARTIST' | 'ORGANIZER') => Promise<void>;
 }
 
 interface FeedContextType {
@@ -225,6 +226,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   /** Re-reads the profile from the server, e.g. after a role switch. */
   const refreshSession = useCallback(() => {
     loadProfile().catch(() => {});
+  }, [loadProfile]);
+
+  /**
+   * Switches the active role.
+   *
+   * The server issues a new access token carrying the new role, so it is
+   * stored before anything else. The JWT subject is what the backend
+   * authorises messaging against, so its cache is cleared too — otherwise
+   * the app keeps identifying as the previous session.
+   */
+  const switchRole = useCallback(async (role: 'BUYER' | 'ARTIST' | 'ORGANIZER') => {
+    const { AuthService } = await import('@/services/authService');
+    const { accessToken } = await AuthService.switchRole(role);
+    await AuthStorage.setAccessToken(accessToken);
+    clearAuthUserIdCache();
+    await loadProfile();
   }, [loadProfile]);
 
   // ── Cart ────────────────────────────────────────────────
@@ -425,7 +442,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [cart, addToCart, updateQuantity, removeFromCart, clearCart, refreshCart, cartTotal, cartCount, cartLoading],
   );
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
-  const userValue = useMemo(() => ({ user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession }), [user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession]);
+  const userValue = useMemo(() => ({ user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole }), [user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole]);
   const feedValue = useMemo(() => ({
     feedPosts, trendingPosts, followingPosts, feedLoading, feedError,
     fetchPersonalisedFeed, fetchTrendingFeed, fetchFollowingFeed,

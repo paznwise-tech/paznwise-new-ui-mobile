@@ -134,6 +134,44 @@ export const AuthService = {
    * `DELETE /users/me` does not exist — the account lives behind the
    * profile resource.
    */
+  /**
+   * Signs in with an OAuth provider's token.
+   *
+   * The provider token is exchanged server-side; nothing here trusts it
+   * locally.
+   */
+  async socialLogin(
+    provider: 'google' | 'facebook' | 'apple',
+    token: string,
+    name?: string,
+  ): Promise<LoginResponse> {
+    const res = await fetchApi<ApiResponse<LoginResponse>>('/auth/social', {
+      method: 'POST',
+      requiresAuth: false,
+      body: JSON.stringify({ provider, token, name }),
+    });
+    return res.data;
+  },
+
+  /**
+   * Switches the session's active role.
+   *
+   * Returns a NEW access token carrying the new role — storing it is not
+   * optional, or the session keeps acting as the previous role. The server
+   * rejects a role the user does not actually hold, and its message names
+   * which, so no client-side list of available roles is invented here.
+   */
+  async switchRole(role: 'BUYER' | 'ARTIST' | 'ORGANIZER'): Promise<{ accessToken: string }> {
+    const res = await fetchApi<any>('/auth/switch-role', {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify({ role }),
+    });
+    const d = res?.data ?? res;
+    if (!d?.accessToken) throw new Error('Role switch did not return a new session token.');
+    return { accessToken: d.accessToken };
+  },
+
   async deleteAccount(): Promise<void> {
     await fetchApi<any>('/user/profile', {
       method: 'DELETE',

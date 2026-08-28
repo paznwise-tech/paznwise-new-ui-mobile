@@ -31,7 +31,8 @@ function SettingRow({
 }
 
 export default function Settings() {
-  const { user, logout } = useUser();
+  const { user, logout, switchRole } = useUser();
+  const [switching, setSwitching] = useState(false);
   const [pushEnabled, setPushEnabled]     = useState(true);
   const [emailEnabled, setEmailEnabled]   = useState(true);
   const [orderNotifs, setOrderNotifs]     = useState(true);
@@ -47,6 +48,38 @@ export default function Settings() {
    * /auth/change-password, which does not exist, so every attempt failed
    * with a network error after the user had typed their credentials.
    */
+  /**
+   * Role switching.
+   *
+   * The client is not told which roles a user actually holds, so all three
+   * are offered and the server decides — its rejection names the role,
+   * which is more accurate than any list guessed from profile flags.
+   */
+  const handleSwitchRole = useCallback(() => {
+    const roles: Array<'BUYER' | 'ARTIST' | 'ORGANIZER'> = ['BUYER', 'ARTIST', 'ORGANIZER'];
+    const current = String(user.role ?? '').toUpperCase();
+
+    Alert.alert('Switch role', 'Choose how you want to use Paznwise.', [
+      { text: 'Cancel', style: 'cancel' },
+      ...roles
+        .filter(r => r !== current)
+        .map(r => ({
+          text: r.charAt(0) + r.slice(1).toLowerCase(),
+          onPress: async () => {
+            setSwitching(true);
+            try {
+              await switchRole(r);
+              Alert.alert('Switched', `You are now using Paznwise as ${r.toLowerCase()}.`);
+            } catch (e: any) {
+              Alert.alert('Could not switch', e?.message ?? 'Please try again.');
+            } finally {
+              setSwitching(false);
+            }
+          },
+        })),
+    ]);
+  }, [user.role, switchRole]);
+
   const handleResetPassword = useCallback(() => {
     if (!user.email) {
       Alert.alert('No email on file', 'Add an email address to your profile to reset your password.');
@@ -160,6 +193,13 @@ export default function Settings() {
         {/* Account */}
         <SectionHeader title="Account" />
         <View style={styles.card}>
+          <SettingRow
+            icon="🔄"
+            label="Switch Role"
+            sublabel={switching ? 'Switching…' : `Currently ${String(user.role ?? 'Buyer').toLowerCase()}`}
+            onPress={handleSwitchRole}
+          />
+          <View style={styles.rowDivider} />
           <SettingRow
             icon="🔒" label="Reset Password"
             sublabel={pwdLoading ? 'Sending…' : 'We email you a secure reset link'}

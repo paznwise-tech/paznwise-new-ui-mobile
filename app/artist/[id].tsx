@@ -121,18 +121,31 @@ export default function ArtistProfile() {
         </View>
 
         {/* Stats */}
+        {/* Follower counts open the list — they were static numbers, so the
+            social graph was visible but not explorable. */}
         <View style={styles.statsRow}>
-          {[
-            [fmtCount(postsCount),  'Works'],
-            [fmtCount(followers),   'Followers'],
-            [fmtCount(followingCt), 'Following'],
-            [fmtCount(totalLikes),  'Likes'],
-          ].map(([v, l]) => (
-            <View key={l} style={styles.stat}>
-              <Text style={styles.statVal}>{v}</Text>
-              <Text style={styles.statLabel}>{l}</Text>
-            </View>
-          ))}
+          {([
+            [fmtCount(postsCount),  'Works',     null],
+            [fmtCount(followers),   'Followers', 'followers'],
+            [fmtCount(followingCt), 'Following', 'following'],
+            [fmtCount(totalLikes),  'Likes',     null],
+          ] as Array<[string, string, string | null]>).map(([v, l, type]) => {
+            const Wrapper: any = type ? TouchableOpacity : View;
+            return (
+              <Wrapper
+                key={l}
+                style={styles.stat}
+                onPress={
+                  type && profile?.id
+                    ? () => router.push({ pathname: '/network/follows', params: { type, userId: profile.id } } as any)
+                    : undefined
+                }
+              >
+                <Text style={styles.statVal}>{v}</Text>
+                <Text style={styles.statLabel}>{l}</Text>
+              </Wrapper>
+            );
+          })}
         </View>
 
         {/* Tabs */}
