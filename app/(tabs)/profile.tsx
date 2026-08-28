@@ -36,6 +36,7 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
     { icon: '🏷', label: 'Coupons',        sub: 'Offers you can use',             route: '/coupons' },
     { icon: '⭐', label: 'My Reviews',     sub: 'Reviews you have written',       route: '/reviews' },
     { icon: '📍', label: 'Addresses',      sub: 'Manage delivery addresses',      route: '/addresses' },
+    { icon: '↩️', label: 'Returns',        sub: 'Returns, replacements & refunds', route: '/returns' },
   ];
 
   const activity: MenuItem[] = [

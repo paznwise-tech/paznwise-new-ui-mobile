@@ -227,6 +227,14 @@ export default function OrderDetailTrackingScreen() {
             >
               <Text style={styles.actionText}>Track shipment</Text>
             </TouchableOpacity>
+            {RETURNABLE.includes(String(order.status).toUpperCase()) && (
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => router.push({ pathname: '/returns/create', params: { orderId: String(order.id) } } as any)}
+              >
+                <Text style={styles.actionText}>Return or replace items</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.actionBtn} onPress={handleReorder} disabled={busy}>
               <Text style={styles.actionText}>Buy these again</Text>
             </TouchableOpacity>
@@ -242,6 +250,9 @@ export default function OrderDetailTrackingScreen() {
 
 /** Statuses the API still allows a buyer to cancel. */
 const CANCELLABLE = ['PENDING', 'CONFIRMED', 'PROCESSING'];
+
+/** A return only makes sense once the buyer actually has the goods. */
+const RETURNABLE = ['DELIVERED', 'COMPLETED'];
 
 const styles = StyleSheet.create({
   actions: {
