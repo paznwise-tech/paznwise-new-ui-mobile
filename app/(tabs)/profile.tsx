@@ -65,7 +65,7 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
   ];
 
   const organizer: MenuItem[] = [
-    { icon: '🎪', label: 'Create Event',      sub: 'Host your own art event',      route: '/events/create' },
+    { icon: '🎟', label: 'Ticketed Events',  sub: 'Sales, tiers and attendees',   route: '/organizer/events' },
   ];
 
   const account: MenuItem[] = [

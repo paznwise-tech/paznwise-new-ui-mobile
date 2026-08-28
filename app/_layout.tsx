@@ -148,6 +148,9 @@ function RootNavigator() {
             <Stack.Screen name="artist/services/create" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="artist/events/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="artist/events/[id]" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="organizer/events/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="organizer/events/[id]" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="organizer/events/create" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="artist/rentals" options={{ animation: 'slide_from_right' }} />
           </Stack.Protected>
         </Stack>
