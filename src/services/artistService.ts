@@ -75,6 +75,42 @@ function normalizeService(s: ApiArtistService, idx: number): Performer & { servi
   };
 }
 
+export interface ArtistSlot {
+  id: string;
+  date: string;
+  /** "HH:MM", the format the server's pattern requires. */
+  startTime: string;
+  endTime: string;
+  isRecurring: boolean;
+  recurringDays: number[];
+  maxBookings: number;
+  bookedCount: number;
+  isBlocked: boolean;
+}
+
+export interface NewArtistSlot {
+  date: string;
+  startTime: string;
+  endTime: string;
+  isRecurring?: boolean;
+  recurringDays?: number[];
+  maxBookings?: number;
+}
+
+function normalizeSlot(s: any): ArtistSlot {
+  return {
+    id: String(s.id),
+    date: s.date,
+    startTime: s.startTime ?? '',
+    endTime: s.endTime ?? '',
+    isRecurring: !!s.isRecurring,
+    recurringDays: s.recurringDays ?? [],
+    maxBookings: Number(s.maxBookings ?? 1),
+    bookedCount: Number(s.bookedCount ?? 0),
+    isBlocked: !!s.isBlocked,
+  };
+}
+
 export const ArtistServiceApi = {
   async getServices(params?: {
     category?: string;
@@ -112,11 +148,104 @@ export const ArtistServiceApi = {
     }
   },
 
-  async setAvailability(blockedDates: string[], availableTimeSlots: string[]): Promise<void> {
-    await fetchApi<any>('/artist-services/availability', {
+  // ── Artist-side service management ─────────────────────
+
+  /** The signed-in artist's own services. */
+  async getMyServices(): Promise<ApiArtistService[]> {
+    const res = await fetchApi<any>('/artist-services/my', { requiresAuth: true });
+    const d = res?.data ?? res;
+    return Array.isArray(d) ? d : (d?.services ?? d?.items ?? []);
+  },
+
+  /**
+   * Creates a bookable service.
+   *
+   * `timeSlots` is required with at least one entry — the API will not
+   * create a service nobody can book. `serviceLocations` accepts exactly
+   * one value, not several.
+   *
+   * Sent as multipart because cover images are file uploads.
+   */
+  async createService(input: {
+    title: string;
+    description: string;
+    categoryIds: string[];
+    pricingType: 'HOURLY' | 'PER_SESSION' | 'FIXED' | 'CUSTOM_QUOTE';
+    basePrice: number;
+    serviceLocation: 'HOME_VISIT' | 'VENUE';
+    cities?: string[];
+    venueAddress?: string;
+    serviceRadius?: string;
+    timeSlots: NewArtistSlot[];
+    coverImages?: Array<{ uri: string; name: string }>;
+  }): Promise<{ id: string }> {
+    const form = new FormData();
+    form.append('title', input.title);
+    form.append('description', input.description);
+    form.append('pricingType', input.pricingType);
+    form.append('basePrice', String(input.basePrice));
+    // Arrays go as JSON strings; the server's parseFormDataArrays accepts
+    // either that or a comma-separated list.
+    form.append('categoryIds', JSON.stringify(input.categoryIds));
+    form.append('serviceLocations', JSON.stringify([input.serviceLocation]));
+    form.append('cities', JSON.stringify(input.cities ?? []));
+    form.append('timeSlots', JSON.stringify(input.timeSlots));
+    if (input.venueAddress) form.append('venueAddress', input.venueAddress);
+    if (input.serviceRadius) form.append('serviceRadius', input.serviceRadius);
+
+    for (const img of input.coverImages ?? []) {
+      form.append('coverImages', { uri: img.uri, name: img.name, type: 'image/jpeg' } as unknown as Blob);
+    }
+
+    const res = await fetchApi<any>('/artist-services', {
+      method: 'POST',
+      requiresAuth: true,
+      body: form,
+    });
+    const d = res?.data ?? res;
+    return { id: String(d?.id ?? '') };
+  },
+
+  async deleteService(serviceId: string): Promise<void> {
+    await fetchApi(`/artist-services/${serviceId}`, { method: 'DELETE', requiresAuth: true });
+  },
+
+  /**
+   * Availability slots for one service.
+   *
+   * There is no `/artist-services/availability` endpoint — slots hang off a
+   * service. The previous call to `PUT /artist-services/availability`
+   * matched `PUT /:serviceId`, so it was served as an attempt to update a
+   * service with the id "availability".
+   */
+  async getSlots(serviceId: string): Promise<ArtistSlot[]> {
+    const res = await fetchApi<any>(`/artist-services/${serviceId}/slots`, { requiresAuth: false });
+    const d = res?.data ?? res;
+    const list: any[] = Array.isArray(d) ? d : (d?.slots ?? d?.items ?? []);
+    return list.map(normalizeSlot);
+  },
+
+  /** Creates one slot or several; the server accepts either shape. */
+  async addSlots(serviceId: string, slots: NewArtistSlot[]): Promise<void> {
+    await fetchApi(`/artist-services/${serviceId}/slots`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify(slots.length === 1 ? slots[0] : slots),
+    });
+  },
+
+  async updateSlot(serviceId: string, slotId: string, patch: Partial<NewArtistSlot>): Promise<void> {
+    await fetchApi(`/artist-services/${serviceId}/slots/${slotId}`, {
       method: 'PUT',
       requiresAuth: true,
-      body: JSON.stringify({ blockedDates, availableTimeSlots }),
+      body: JSON.stringify(patch),
+    });
+  },
+
+  async deleteSlot(serviceId: string, slotId: string): Promise<void> {
+    await fetchApi(`/artist-services/${serviceId}/slots/${slotId}`, {
+      method: 'DELETE',
+      requiresAuth: true,
     });
   },
 };

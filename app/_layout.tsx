@@ -144,6 +144,8 @@ function RootNavigator() {
             <Stack.Screen name="artist/register-artist" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="artist/dashboard/index" options={{ animation: 'slide_from_right' }} />
             <Stack.Screen name="artist/availability/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="artist/bookings/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="artist/services/create" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="artist/rentals" options={{ animation: 'slide_from_right' }} />
           </Stack.Protected>
         </Stack>

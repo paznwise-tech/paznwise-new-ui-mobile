@@ -58,6 +58,7 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
   // them to a buyer would only produce 403s.
   const artist: MenuItem[] = [
     { icon: '🎭', label: 'Artist Dashboard',  sub: 'Bookings and services',        route: '/artist/dashboard' },
+    { icon: '📥', label: 'Booking Requests',  sub: 'Accept or decline requests',   route: '/artist/bookings' },
     { icon: '🗓', label: 'My Availability',   sub: 'Slots people can book',        route: '/artist/availability' },
     { icon: '📮', label: 'Rental Requests',   sub: 'Requests for your artwork',    route: '/artist/rentals' },
   ];

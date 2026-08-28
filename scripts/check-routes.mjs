@@ -216,13 +216,32 @@ const realList = [...realRoutes].map(r => {
 });
 
 const missing = [];
+const shadowed = [];
+
 for (const call of called) {
   const full = `/api${call.path.split('?')[0]}`;
   const matcher = toMatcher(full);
-  const hit = realList.some(
+  const hits = realList.filter(
     r => r.method === call.method && (r.re.test(full) || matcher.test(r.path)),
   );
-  if (!hit) missing.push({ ...call, full });
+
+  if (hits.length === 0) {
+    missing.push({ ...call, full });
+    continue;
+  }
+
+  // A literal segment can be swallowed by a wildcard: PUT
+  // /artist-services/availability matches PUT /artist-services/:serviceId,
+  // so the request is served with serviceId="availability". This is
+  // structurally a match, which is why it needs its own check — the same
+  // shape that made GET /api/orders/stats unreachable server-side.
+  const callSegs = full.split('/');
+  const exact = hits.some(r => {
+    const segs = r.path.split('/');
+    if (segs.length !== callSegs.length) return false;
+    return segs.every((seg, i) => !seg.startsWith(':') || callSegs[i] === ':p');
+  });
+  if (!exact) shadowed.push({ ...call, full, matched: hits.map(h => h.path) });
 }
 
 // ── Report ───────────────────────────────────────────────
@@ -230,10 +249,23 @@ for (const call of called) {
 console.log(`Parsed ${realRoutes.size} routes from ${relative('.', apiDir)}`);
 console.log(`Checked ${called.length} calls across ${serviceFiles.length} service files\n`);
 
-if (missing.length === 0) {
+if (shadowed.length > 0) {
+  console.log(
+    `⚠ ${shadowed.length} call${shadowed.length === 1 ? '' : 's'} matching only a wildcard route:\n`,
+  );
+  for (const sdw of shadowed) {
+    console.log(`  ${sdw.method.padEnd(6)} ${sdw.full}`);
+    console.log(`         matches ${sdw.matched.join(', ')}`);
+    console.log(`         ${sdw.file}:${sdw.line}\n`);
+  }
+}
+
+if (missing.length === 0 && shadowed.length === 0) {
   console.log('✓ Every endpoint the app calls exists on the API.');
   process.exit(0);
 }
+
+if (missing.length === 0) process.exit(1);
 
 console.log(`✗ ${missing.length} call${missing.length === 1 ? '' : 's'} with no matching route:\n`);
 for (const m of missing) {

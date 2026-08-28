@@ -170,6 +170,22 @@ export const BookingService = {
     return toList(res).map(normalizeBooking);
   },
 
+  async acceptBooking(bookingId: string): Promise<void> {
+    await fetchApi(`/artist-services/bookings/${bookingId}/accept`, {
+      method: 'POST',
+      requiresAuth: true,
+    });
+  },
+
+  /** The reason is shown to the customer, so it is never sent empty. */
+  async declineBooking(bookingId: string, reason: string): Promise<void> {
+    await fetchApi(`/artist-services/bookings/${bookingId}/decline`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify({ reason }),
+    });
+  },
+
   async getBookingDetail(bookingId: string): Promise<ServiceBooking> {
     const res = await fetchApi<any>(`/artist-services/bookings/${bookingId}`, {
       requiresAuth: true,

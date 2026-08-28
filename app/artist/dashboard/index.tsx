@@ -128,6 +128,13 @@ export default function ArtistDashboard() {
         </View>
 
         {/* Recent booking requests */}
+        <TouchableOpacity
+          style={styles.createServiceBtn}
+          onPress={() => router.push('/artist/services/create' as any)}
+        >
+          <Text style={styles.createServiceText}>+ Add a bookable service</Text>
+        </TouchableOpacity>
+
         <Text style={styles.sectionTitle}>Recent Booking Requests</Text>
         {bookings.length === 0 ? (
           <View style={styles.emptySection}>
@@ -169,6 +176,11 @@ export default function ArtistDashboard() {
 }
 
 const styles = StyleSheet.create({
+  createServiceBtn: {
+    borderWidth: 1, borderColor: Colors.gold + '66', borderRadius: Radius.md,
+    paddingVertical: Spacing.md, alignItems: 'center', marginTop: Spacing.md,
+  },
+  createServiceText: { ...Typography.bodySemibold, fontSize: 14, color: Colors.gold },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
