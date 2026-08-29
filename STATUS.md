@@ -52,10 +52,14 @@ Organizer: ticketed events, tiers, sales and attendees.
 
 These are flagged rather than worked around:
 
-- **Three monetised flows create no payment order.** Rentals, subscriptions
-  and organizer ticket purchases all record a `paymentMethod` and settle
-  nothing. Orders, event tickets, performer bookings and the artist fee do
-  go through Razorpay.
+- **Two monetised flows create no payment order.** Rentals and organizer
+  ticket purchases record a `paymentMethod` and settle nothing. Orders,
+  event tickets, performer bookings, the artist fee and — since the
+  subscription payment fix — plans all go through Razorpay.
+
+  Rentals are the more consequential of the two: the artist dispatches
+  artwork having received neither the rental fee nor the security deposit
+  that `artist/rentals.tsx` later offers to "refund" or "withhold".
 - **Seller payouts have no home.** Seller setup used to collect bank
   details and post them to `POST /api/sellers/setup`, which does not exist.
   The form is gone; how payouts actually work is undecided.
