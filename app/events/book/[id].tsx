@@ -181,6 +181,32 @@ export default function BookEventTicket() {
 
   const tiers = event.ticketTiers ?? [];
 
+  /**
+   * Why booking is closed, or null while it is open.
+   *
+   * Nothing stopped a user paying for an event that had already finished:
+   * the list and detail screens keep showing past events, and the booking
+   * screen took the payment regardless. Compared against the end of the
+   * relevant day, since a date-only value covers the whole day.
+   */
+  const endOfDay = (iso?: string | null) => {
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return null;
+    d.setHours(23, 59, 59, 999);
+    return d;
+  };
+
+  const now = new Date();
+  const finishes = endOfDay(event.eventEndDate) ?? endOfDay(event.eventDate);
+  const closes = endOfDay(event.bookingDeadline);
+  const closedReason =
+    finishes && finishes < now
+      ? 'This event has already taken place.'
+      : closes && closes < now
+        ? 'Bookings for this event have closed.'
+        : null;
+
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bg }}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 140 }}>
@@ -338,18 +364,21 @@ export default function BookEventTicket() {
       </ScrollView>
 
       <View style={styles.cta}>
+        {closedReason && <Text style={styles.closedNote}>{closedReason}</Text>}
         <GoldButton
           label={
-            processing
-              ? 'Processing…'
-              : total === 0
-                ? `Register · ${effectiveQuantity} ${effectiveQuantity === 1 ? 'ticket' : 'tickets'}`
-                : `Pay ₹${total.toLocaleString('en-IN')}`
+            closedReason
+              ? 'Booking closed'
+              : processing
+                ? 'Processing…'
+                : total === 0
+                  ? `Register · ${effectiveQuantity} ${effectiveQuantity === 1 ? 'ticket' : 'tickets'}`
+                  : `Pay ₹${total.toLocaleString('en-IN')}`
           }
           onPress={handleConfirm}
           size="lg"
           fullWidth
-          disabled={processing || effectiveQuantity === 0}
+          disabled={!!closedReason || processing || effectiveQuantity === 0}
         />
       </View>
     </View>
@@ -431,6 +460,10 @@ const styles = StyleSheet.create({
   summaryDivider: { height: 1, backgroundColor: Colors.border, marginHorizontal: Spacing.md, marginVertical: 4 },
   summaryTotalKey: { ...Typography.bodyBold, fontSize: 15 },
   summaryTotal: { ...Typography.display, fontSize: 20, color: Colors.gold },
+  closedNote: {
+    ...Typography.caption, fontSize: 13, color: Colors.warning,
+    textAlign: 'center', marginBottom: Spacing.sm,
+  },
   cta: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     backgroundColor: Colors.bgElevated, borderTopWidth: 1, borderTopColor: Colors.borderGold,

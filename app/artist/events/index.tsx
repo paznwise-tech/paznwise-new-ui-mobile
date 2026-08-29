@@ -55,7 +55,9 @@ export default function ArtistEvents() {
   }, [qc]);
 
   const renderItem = useCallback(({ item }: { item: any }) => {
-    const status = String(item.status ?? 'PENDING').toUpperCase();
+    // The API reports moderation state as `approvalStatus`; `status` is
+    // always null, so reading it showed every event as PENDING.
+    const status = String(item.approvalStatus ?? item.status ?? 'PENDING').toUpperCase();
     const color = STATUS_COLORS[status] ?? Colors.warning;
     const busy = busyId === String(item.id);
 

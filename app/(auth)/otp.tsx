@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
@@ -33,7 +33,40 @@ export default function OTP() {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resending, setResending] = useState(false);
+  // A cooldown stops repeat taps burning through the server's OTP rate
+  // limit, which then rejects the legitimate retry too.
+  const [cooldown, setCooldown] = useState(0);
   const refs = useRef<(TextInput | null)[]>([]);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  /**
+   * Resend.
+   *
+   * The button previously had no onPress at all, so "Didn't receive?
+   * Resend OTP" did nothing — anyone whose first code went missing was
+   * stuck.
+   */
+  const handleResend = useCallback(async () => {
+    if (!identifier || resending || cooldown > 0) return;
+    setResending(true);
+    setError('');
+    try {
+      await AuthService.resendOtp(identifier);
+      setOtp(['', '', '', '', '', '']);
+      refs.current[0]?.focus();
+      setCooldown(30);
+    } catch (e: any) {
+      setError(e?.message ?? 'Could not resend the code. Please try again.');
+    } finally {
+      setResending(false);
+    }
+  }, [identifier, resending, cooldown]);
 
   const handleChange = (text: string, idx: number) => {
     const next = [...otp];
@@ -124,10 +157,20 @@ export default function OTP() {
 
       {!!error && <Text style={styles.errorText}>{error}</Text>}
 
-      <TouchableOpacity style={styles.resend}>
+      <TouchableOpacity
+        style={styles.resend}
+        onPress={handleResend}
+        disabled={resending || cooldown > 0}
+      >
         <Text style={styles.resendText}>
           Didn't receive?{' '}
-          <Text style={{ color: Colors.gold }}>Resend OTP</Text>
+          <Text style={{ color: cooldown > 0 ? Colors.creamFaint : Colors.gold }}>
+            {resending
+              ? 'Sending…'
+              : cooldown > 0
+                ? `Resend in ${cooldown}s`
+                : 'Resend OTP'}
+          </Text>
         </Text>
       </TouchableOpacity>
 

@@ -321,8 +321,14 @@ export const FeedService = {
     return posts;
   },
 
-  async getTrendingFeed(): Promise<FeedPost[]> {
-    const res = await fetchApi<ApiResponse<TrendingItem[]>>('/feed/trend', {
+  /**
+   * @param category Category name or id. `/feed/trend` accepts it as a query
+   *   param; omitted entirely for "All", since an empty value is not the same
+   *   as no filter server-side.
+   */
+  async getTrendingFeed(category?: string): Promise<FeedPost[]> {
+    const qs = category ? `?category=${encodeURIComponent(category)}` : '';
+    const res = await fetchApi<ApiResponse<TrendingItem[]>>(`/feed/trend${qs}`, {
       requiresAuth: false,
     });
     const items = Array.isArray(res.data) ? res.data : [];

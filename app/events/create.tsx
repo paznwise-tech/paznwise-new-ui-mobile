@@ -6,24 +6,161 @@ import {
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { EventService } from '@/services/eventService';
+import { useEventCategoryOptions } from '@/hooks/useTaxonomy';
+import { useUser } from '@/context/AppContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STEP_LABELS = ['Type', 'Details', 'Date & Venue', 'Tickets', 'Review'];
 
-const EVENT_TYPES = [
-  { key: 'Art Exhibition',      emoji: '🖼' },
-  { key: 'Live Performance',    emoji: '🎵' },
-  { key: 'Workshop / Class',    emoji: '🎨' },
-  { key: 'Art Fair / Market',   emoji: '🏪' },
-  { key: 'Artist Talk / Panel', emoji: '🎤' },
-  { key: 'Open Studio',         emoji: '🚪' },
-];
+// Categories come from `/event-categories` — the API validates `categoryId`
+// as a UUID, so a hardcoded list here cannot produce a submittable form.
+// These are decoration only, matched by name with a generic fallback.
+const CATEGORY_EMOJI: Record<string, string> = {
+  music: '🎵',
+  performance: '🎭',
+  exhibition: '🖼',
+  workshop: '🎨',
+  'art fair': '🏪',
+  talk: '🎤',
+  theatre: '🎭',
+  dance: '💃',
+  comedy: '😂',
+  festival: '🎪',
+};
 
-const CITIES = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Goa', 'Kochi', 'Chandigarh', 'Lucknow', 'Indore', 'Bhopal'];
+// Sorted so a long list stays scannable — the order the entries happened to
+// be written in gives the user no way to predict where a city sits.
+const CITIES = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Goa', 'Kochi', 'Chandigarh', 'Lucknow', 'Indore', 'Bhopal']
+  .sort((a, b) => a.localeCompare(b));
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+//
+// Dates and times are held as strings because that is what the API takes
+// (`eventDate` as ISO, `startTime` as HH:MM). The pickers work in `Date`, so
+// the two conversions live here rather than being repeated per field.
+
+/** Midnight today, the earliest date any event field may hold. */
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+/** `Date` → `YYYY-MM-DD` in local time. `toISOString()` would shift the day. */
+const toYMD = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** `YYYY-MM-DD` → local midnight, or null when unset/unparseable. */
+const fromYMD = (s: string): Date | null => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const toHHMM = (d: Date) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+const fromHHMM = (s: string): Date => {
+  const m = /^(\d{2}):(\d{2})$/.exec(s);
+  const d = new Date();
+  if (m) d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+  return d;
+};
+
+/** Human-readable rendering for the picker buttons. */
+const showDate = (s: string) => {
+  const d = fromYMD(s);
+  return d ? d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+};
+
+const showTime = (s: string) => {
+  const m = /^(\d{2}):(\d{2})$/.exec(s);
+  if (!m) return '';
+  const h = Number(m[1]);
+  const suffix = h < 12 ? 'AM' : 'PM';
+  return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${suffix}`;
+};
+
+type PickField = 'dateFrom' | 'dateTo' | 'timeFrom' | 'timeTo' | 'bookingDeadline';
+
+/**
+ * Returns why `step` is not yet valid, or null when it is.
+ *
+ * Module-level and step-indexed so submit can re-check every step, not just
+ * the one on screen: a draft can be edited backwards, and an event drafted
+ * yesterday for "today" ages into the past while the form sits open.
+ */
+function stepErrorFor(step: number, form: FormState): string | null {
+  if (step === 0) return form.categoryId ? null : 'Please choose an event type.';
+
+  if (step === 1) {
+    if (!form.title.trim()) return 'Please enter an event title.';
+    if (form.title.trim().length < 3) return 'The title must be at least 3 characters.';
+    if (!form.description.trim()) return 'Please add a description.';
+    return null;
+  }
+
+  if (step === 2) {
+    if (!form.dateFrom) return 'Please pick a start date.';
+    const from = fromYMD(form.dateFrom);
+    if (!from) return 'The start date is not valid.';
+    if (from < startOfToday()) return 'The start date cannot be in the past.';
+    const to = fromYMD(form.dateTo);
+    if (form.dateTo && !to) return 'The end date is not valid.';
+    if (to && to < from) return 'The end date must be on or after the start date.';
+    if (!form.venue.trim()) return 'Please enter the venue name.';
+    // The API requires `venueAddress` at 5+ characters; without it the whole
+    // submission is rejected at the last step with a bare 400.
+    if (form.address.trim().length < 5) return 'Please enter the full venue address.';
+    if (!form.city) return 'Please choose a city.';
+    return null;
+  }
+
+  if (step === 3) {
+    if (!form.isFree && !(parseFloat(form.ticketPrice) > 0)) {
+      return 'Please enter a ticket price greater than zero.';
+    }
+    if (form.capacity && !(parseInt(form.capacity, 10) >= 1)) {
+      return 'Capacity must be at least 1.';
+    }
+    const deadline = fromYMD(form.bookingDeadline);
+    if (form.bookingDeadline && !deadline) return 'The booking deadline is not valid.';
+    if (deadline && deadline < startOfToday()) return 'The booking deadline cannot be in the past.';
+    const from = fromYMD(form.dateFrom);
+    if (deadline && from && deadline > from) {
+      return 'Bookings must close on or before the event start date.';
+    }
+    return null;
+  }
+
+  return null;
+}
+
+// ─── Picker button ────────────────────────────────────────────────────────────
+
+/** A read-only field that opens a native picker, styled to match `styles.input`. */
+function PickerButton({
+  value, placeholder, onPress, disabled,
+}: { value: string; placeholder: string; onPress: () => void; disabled?: boolean }) {
+  return (
+    <TouchableOpacity
+      style={[styles.input, styles.pickerBtn, disabled && styles.pickerBtnDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+      activeOpacity={0.7}
+    >
+      <Text style={value ? styles.pickerValue : styles.pickerPlaceholder} numberOfLines={1}>
+        {value || placeholder}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 // ─── Step bar ─────────────────────────────────────────────────────────────────
 
@@ -70,7 +207,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 interface FormState {
+  /** Display name of the chosen category, for the review step. */
   eventType: string;
+  /** The UUID the API validates. `eventType` alone is rejected. */
+  categoryId: string;
   title: string;
   description: string;
   organiserName: string;
@@ -88,44 +228,108 @@ interface FormState {
 }
 
 const EMPTY: FormState = {
-  eventType: '', title: '', description: '', organiserName: '',
+  eventType: '', categoryId: '', title: '', description: '', organiserName: '',
   city: '', venue: '', address: '',
   dateFrom: '', dateTo: '', timeFrom: '', timeTo: '',
   isFree: true, ticketPrice: '', capacity: '', bookingDeadline: '',
 };
 
 export default function CreateEvent() {
+  const { user } = useUser();
+  const { data: categories = [], isLoading: categoriesLoading } = useEventCategoryOptions();
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submissionId, setSubmissionId] = useState('');
 
+  const [picking, setPicking] = useState<PickField | null>(null);
+
   const set = useCallback(<K extends keyof FormState>(k: K) => (v: FormState[K]) => {
     setForm(f => ({ ...f, [k]: v }));
   }, []);
 
-  const canNext = useCallback(() => {
-    if (step === 0) return !!form.eventType;
-    if (step === 1) return !!form.title.trim() && !!form.description.trim();
-    if (step === 2) return !!form.dateFrom && !!form.venue.trim() && !!form.city;
-    if (step === 3) return form.isFree || !!form.ticketPrice;
-    return true;
-  }, [step, form]);
+  /**
+   * Commits a picked date or time, keeping the three dates mutually consistent.
+   *
+   * `minimumDate`/`maximumDate` stop an invalid *initial* pick, but not a later
+   * edit: choosing an end date and then pushing the start date past it would
+   * otherwise leave an event that ends before it begins. Moving the start date
+   * therefore drags the dependent fields with it.
+   */
+  const commitPick = useCallback((field: PickField, picked: Date) => {
+    setForm(f => {
+      if (field === 'timeFrom' || field === 'timeTo') {
+        return { ...f, [field]: toHHMM(picked) };
+      }
+      const ymd = toYMD(picked);
+      const next: FormState = { ...f, [field]: ymd };
+
+      if (field === 'dateFrom') {
+        const end = fromYMD(next.dateTo);
+        if (end && end < picked) next.dateTo = ymd;
+        const deadline = fromYMD(next.bookingDeadline);
+        if (deadline && deadline > picked) next.bookingDeadline = ymd;
+      }
+      return next;
+    });
+  }, []);
+
+  const onPick = useCallback((event: any, picked?: Date) => {
+    const field = picking;
+    setPicking(null);
+    if (event?.type === 'dismissed' || !picked || !field) return;
+    commitPick(field, picked);
+  }, [picking, commitPick]);
+
+  /** Bounds for whichever picker is open, so past dates cannot be chosen. */
+  const pickerBounds = useCallback((field: PickField) => {
+    const today = startOfToday();
+    const from = fromYMD(form.dateFrom);
+    if (field === 'dateFrom') return { min: today, max: undefined };
+    // An event cannot end before it starts.
+    if (field === 'dateTo') return { min: from && from > today ? from : today, max: undefined };
+    // Bookings must close on or before the day the event opens.
+    if (field === 'bookingDeadline') return { min: today, max: from ?? undefined };
+    return { min: undefined, max: undefined };
+  }, [form.dateFrom]);
+
+  const pickerValue = useCallback((field: PickField): Date => {
+    if (field === 'timeFrom' || field === 'timeTo') return fromHHMM(form[field]);
+    const existing = fromYMD(form[field]);
+    if (existing) return existing;
+    // Seed from the bound rather than "now", so opening the end-date picker
+    // lands on the start date instead of a date the picker will not accept.
+    return pickerBounds(field).min ?? startOfToday();
+  }, [form, pickerBounds]);
+
+  const stepError = useCallback(() => stepErrorFor(step, form), [step, form]);
 
   const handleNext = useCallback(() => {
-    if (!canNext()) {
-      Alert.alert('Required', 'Please fill in all required fields before continuing.');
+    const err = stepError();
+    if (err) {
+      Alert.alert('Check this step', err);
       return;
     }
     setStep(s => s + 1);
-  }, [canNext]);
+  }, [stepError]);
 
   const handleSubmit = useCallback(async () => {
+    // The review step is reachable after editing earlier steps, and a draft
+    // left open overnight can age its own start date into the past.
+    for (const s of [0, 1, 2, 3]) {
+      const err = stepErrorFor(s, form);
+      if (err) {
+        Alert.alert('Check your event', err);
+        setStep(s);
+        return;
+      }
+    }
     setLoading(true);
     try {
       const result = await EventService.createEvent({
         eventType: form.eventType,
+        categoryId: form.categoryId,
         title: form.title,
         description: form.description,
         organiserName: form.organiserName,
@@ -149,6 +353,35 @@ export default function CreateEvent() {
       setLoading(false);
     }
   }, [form]);
+
+  // ── Role gate ──────────────────────────────────────────────────────────────
+  //
+  // `POST /events/create` is `authorize('ARTIST')`. Without this, a buyer
+  // fills in all five steps and only then meets a 403.
+
+  if (user.role && user.role !== 'ARTIST') {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bg }}>
+        <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }} />
+        <View style={styles.gate}>
+          <Text style={{ fontSize: 44 }}>🎪</Text>
+          <Text style={styles.gateTitle}>Artists only</Text>
+          <Text style={styles.gateText}>
+            Listing an event needs a verified artist profile. Switch to your artist
+            account, or set one up, to continue.
+          </Text>
+          <GoldButton
+            label="Set up an artist profile"
+            onPress={() => router.replace('/artist/register-artist' as any)}
+            size="lg"
+          />
+          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: Spacing.md }}>
+            <Text style={styles.gateBack}>Go back</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   // ── Success screen ─────────────────────────────────────────────────────────
 
@@ -219,19 +452,27 @@ export default function CreateEvent() {
 
         {/* Step 0 — Event Type */}
         {step === 0 && (
-          <View style={styles.typeGrid}>
-            {EVENT_TYPES.map(t => (
-              <TouchableOpacity
-                key={t.key}
-                style={[styles.typeCard, form.eventType === t.key && styles.typeCardActive]}
-                onPress={() => set('eventType')(t.key)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.typeEmoji}>{t.emoji}</Text>
-                <Text style={[styles.typeLabel, form.eventType === t.key && { color: Colors.gold }]}>{t.key}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          categoriesLoading ? (
+            <ActivityIndicator color={Colors.gold} style={{ marginTop: Spacing.xl }} />
+          ) : categories.length === 0 ? (
+            <Text style={styles.typeEmpty}>
+              Event categories could not be loaded. Please check your connection and try again.
+            </Text>
+          ) : (
+            <View style={styles.typeGrid}>
+              {categories.map(c => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.typeCard, form.categoryId === c.id && styles.typeCardActive]}
+                  onPress={() => setForm(f => ({ ...f, categoryId: c.id, eventType: c.name }))}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.typeEmoji}>{CATEGORY_EMOJI[c.name.toLowerCase()] ?? '🎪'}</Text>
+                  <Text style={[styles.typeLabel, form.categoryId === c.id && { color: Colors.gold }]}>{c.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )
         )}
 
         {/* Step 1 — Details */}
@@ -264,31 +505,47 @@ export default function CreateEvent() {
             <View style={styles.row2}>
               <View style={{ flex: 1 }}>
                 <Field label="START DATE *">
-                  <TextInput style={styles.input} value={form.dateFrom} onChangeText={set('dateFrom')} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.creamFaint} />
+                  <PickerButton
+                    value={showDate(form.dateFrom)}
+                    placeholder="Select date"
+                    onPress={() => setPicking('dateFrom')}
+                  />
                 </Field>
               </View>
               <View style={{ flex: 1 }}>
                 <Field label="END DATE">
-                  <TextInput style={styles.input} value={form.dateTo} onChangeText={set('dateTo')} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.creamFaint} />
+                  <PickerButton
+                    value={showDate(form.dateTo)}
+                    placeholder="Same day"
+                    onPress={() => setPicking('dateTo')}
+                  />
                 </Field>
               </View>
             </View>
             <View style={styles.row2}>
               <View style={{ flex: 1 }}>
                 <Field label="OPENING TIME">
-                  <TextInput style={styles.input} value={form.timeFrom} onChangeText={set('timeFrom')} placeholder="e.g. 10:00 AM" placeholderTextColor={Colors.creamFaint} />
+                  <PickerButton
+                    value={showTime(form.timeFrom)}
+                    placeholder="Select time"
+                    onPress={() => setPicking('timeFrom')}
+                  />
                 </Field>
               </View>
               <View style={{ flex: 1 }}>
                 <Field label="CLOSING TIME">
-                  <TextInput style={styles.input} value={form.timeTo} onChangeText={set('timeTo')} placeholder="e.g. 8:00 PM" placeholderTextColor={Colors.creamFaint} />
+                  <PickerButton
+                    value={showTime(form.timeTo)}
+                    placeholder="Select time"
+                    onPress={() => setPicking('timeTo')}
+                  />
                 </Field>
               </View>
             </View>
             <Field label="VENUE / GALLERY NAME *">
               <TextInput style={styles.input} value={form.venue} onChangeText={set('venue')} placeholder="e.g. NGMA Mumbai" placeholderTextColor={Colors.creamFaint} />
             </Field>
-            <Field label="FULL ADDRESS">
+            <Field label="FULL ADDRESS *">
               <TextInput style={[styles.input, styles.inputMulti]} value={form.address} onChangeText={set('address')} placeholder="Street, area, landmark" placeholderTextColor={Colors.creamFaint} multiline />
             </Field>
             <Field label="CITY *">
@@ -335,7 +592,12 @@ export default function CreateEvent() {
               <TextInput style={styles.input} value={form.capacity} onChangeText={set('capacity')} placeholder="Max attendees" placeholderTextColor={Colors.creamFaint} keyboardType="numeric" />
             </Field>
             <Field label="BOOKING DEADLINE">
-              <TextInput style={styles.input} value={form.bookingDeadline} onChangeText={set('bookingDeadline')} placeholder="YYYY-MM-DD" placeholderTextColor={Colors.creamFaint} />
+              <PickerButton
+                value={showDate(form.bookingDeadline)}
+                placeholder={form.dateFrom ? 'Closes when the event starts' : 'Pick a start date first'}
+                disabled={!form.dateFrom}
+                onPress={() => setPicking('bookingDeadline')}
+              />
             </Field>
           </>
         )}
@@ -363,8 +625,8 @@ export default function CreateEvent() {
             <View style={styles.reviewSection}>
               <Text style={styles.reviewSectionTitle}>Date & Venue</Text>
               {[
-                ['Dates', [form.dateFrom, form.dateTo].filter(Boolean).join(' → ')],
-                ['Time', [form.timeFrom, form.timeTo].filter(Boolean).join(' – ')],
+                ['Dates', [showDate(form.dateFrom), showDate(form.dateTo)].filter(Boolean).join(' → ')],
+                ['Time', [showTime(form.timeFrom), showTime(form.timeTo)].filter(Boolean).join(' – ')],
                 ['Venue', form.venue],
                 ['City', form.city],
               ].map(([k, v]) => !!v && (
@@ -391,6 +653,16 @@ export default function CreateEvent() {
           </View>
         )}
       </ScrollView>
+
+      {picking && (
+        <DateTimePicker
+          value={pickerValue(picking)}
+          mode={picking === 'timeFrom' || picking === 'timeTo' ? 'time' : 'date'}
+          minimumDate={pickerBounds(picking).min}
+          maximumDate={pickerBounds(picking).max}
+          onChange={onPick}
+        />
+      )}
 
       <View style={styles.bottomBar}>
         {step < 4 ? (
@@ -424,6 +696,16 @@ const styles = StyleSheet.create({
   inputMulti: { minHeight: 100, textAlignVertical: 'top' },
   charCount: { ...Typography.caption, fontSize: 11, color: Colors.creamFaint, textAlign: 'right', marginTop: 2 },
   row2: { flexDirection: 'row', gap: Spacing.sm },
+  // Date/time picker fields — sized to match a single-line TextInput.
+  typeEmpty: { ...Typography.body, fontSize: 14, color: Colors.creamDim, textAlign: 'center', marginTop: Spacing.xl },
+  gate: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.sm },
+  gateTitle: { ...Typography.heading, fontSize: 20, marginTop: Spacing.sm },
+  gateText: { ...Typography.body, fontSize: 14, color: Colors.creamDim, textAlign: 'center', marginBottom: Spacing.md },
+  gateBack: { ...Typography.bodySemibold, fontSize: 14, color: Colors.creamDim },
+  pickerBtn: { justifyContent: 'center', minHeight: 50 },
+  pickerBtnDisabled: { opacity: 0.5 },
+  pickerValue: { ...Typography.body, fontSize: 15, color: Colors.cream },
+  pickerPlaceholder: { ...Typography.body, fontSize: 15, color: Colors.creamFaint },
   // City chips
   cityChip: { paddingHorizontal: Spacing.md, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard },
   cityChipActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '18' },

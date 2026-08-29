@@ -31,6 +31,18 @@ export default function Signup() {
       setError('Please fill out all required fields');
       return;
     }
+    // Matches the server's 30-character cap, so an over-long name is caught
+    // here rather than rejected after the request.
+    if (name.trim().length > 30) {
+      setError('Name cannot exceed 30 characters');
+      return;
+    }
+    // Requires a dot-separated domain: "a@b" passes a naive check but is
+    // not a deliverable address, and the OTP would never arrive.
+    if (!/^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/.test(email.trim())) {
+      setError('Please enter a valid email address');
+      return;
+    }
     if (password.length < 8) {
       setError('Password must be at least 8 characters');
       return;
@@ -102,6 +114,7 @@ export default function Signup() {
               value={name}
               onChangeText={t => { setName(t); setError(''); }}
               placeholder="Amit Kumar"
+              maxLength={30}
               placeholderTextColor={Colors.creamFaint}
               autoCapitalize="words"
               style={styles.input}

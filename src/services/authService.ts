@@ -45,6 +45,15 @@ export const AuthService = {
     return { message: res.message, otp: res.otp };
   },
 
+  /** Re-sends the OTP for an in-flight verification. */
+  async resendOtp(phone: string): Promise<{ message: string; otp?: string }> {
+    const res = await fetchApi<{ success: boolean; message: string; otp?: string }>(
+      '/auth/resend-otp',
+      { method: 'POST', requiresAuth: false, body: JSON.stringify({ phone }) },
+    );
+    return { message: res.message, otp: res.otp };
+  },
+
   /**
    * Verify OTP — smart routing:
    * - Existing user → { isNewUser: false, user, accessToken, refreshToken }

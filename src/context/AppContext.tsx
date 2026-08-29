@@ -77,7 +77,7 @@ interface FeedContextType {
   feedLoading: boolean;
   feedError: string | null;
   fetchPersonalisedFeed: (userId: string) => Promise<void>;
-  fetchTrendingFeed: () => Promise<void>;
+  fetchTrendingFeed: (category?: string) => Promise<void>;
   fetchFollowingFeed: () => Promise<void>;
   createPost: (data: CreatePostData) => Promise<void>;
   updatePost: (postId: number, data: UpdatePostData) => Promise<void>;
@@ -333,11 +333,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const fetchTrendingFeed = useCallback(async () => {
+  const fetchTrendingFeed = useCallback(async (category?: string) => {
     setFeedLoading(true);
     setFeedError(null);
     try {
-      const data = await FeedService.getTrendingFeed();
+      const data = await FeedService.getTrendingFeed(category);
       setTrendingPosts(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.warn('[Feed] trending feed error:', err.message);
@@ -386,7 +386,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteFeedPost = useCallback(async (postId: number) => {
     try {
       await FeedService.deletePost(postId);
-      setFeedPosts(prev => prev.filter(p => p.id !== postId));
+      // All three lists, not just the personalised one: the home screen also
+      // renders `trendingPosts`, so filtering one left the deleted post on
+      // screen until the app was restarted.
+      const drop = (posts: FeedPost[]) => posts.filter(p => p.id !== postId);
+      setFeedPosts(drop);
+      setTrendingPosts(drop);
+      setFollowingPosts(drop);
     } catch (err: any) {
       console.warn('[Feed] delete post error:', err.message);
       throw err;

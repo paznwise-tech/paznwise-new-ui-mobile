@@ -17,7 +17,9 @@ export default function RequestOTP() {
       return;
     }
     const digits = raw.replace(/\D/g, '');
-    if (digits.length < 10) {
+    // Exactly 10. `slice(-10)` below silently drops leading digits, so a
+    // longer number would be sent as a different one than was typed.
+    if (digits.length !== 10) {
       setError('Please enter a valid 10-digit phone number');
       return;
     }
@@ -62,6 +64,7 @@ export default function RequestOTP() {
               placeholderTextColor={Colors.creamFaint}
               autoCapitalize="none"
               keyboardType="phone-pad"
+              maxLength={10}
               style={styles.input}
             />
           </View>

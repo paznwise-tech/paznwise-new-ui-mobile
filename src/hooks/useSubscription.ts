@@ -22,18 +22,11 @@ export function useMySubscription(enabled = true) {
   });
 }
 
-export function useSubscribe() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ planId, paymentMethod }: { planId: string; paymentMethod: SubscriptionPaymentMethod }) =>
-      SubscriptionService.subscribe(planId, paymentMethod),
-    onSuccess: () => {
-      // New quotas take effect immediately, so anything that was blocked by
-      // the old plan needs to stop being blocked without an app restart.
-      qc.invalidateQueries({ queryKey: subscriptionKeys.mine });
-    },
-  });
-}
+// `useSubscribe` was removed with the payment rewrite. Subscribing is no
+// longer a single mutation: `subscribe` now only opens the purchase, and a
+// paid plan is not active until `verifyPayment` succeeds. A hook that
+// resolved on the first call would report success before payment.
+// See `useRazorpayPayment` in app/subscription/index.tsx.
 
 export function useCancelSubscription() {
   const qc = useQueryClient();

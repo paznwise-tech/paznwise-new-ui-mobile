@@ -7,10 +7,12 @@ import { EventCard } from '@/components/events/EventCard';
 import { EventService } from '@/services/eventService';
 import { useEventCategories } from '@/hooks/useTaxonomy';
 import { Event } from '@/types';
+import { useUser } from '@/context/AppContext';
 
 const ALL_CITIES = 'All Cities';
 
 export default function Events() {
+  const { user }            = useUser();
   const [cat, setCat]       = useState('All');
   const [city, setCity]     = useState(ALL_CITIES);
   const CATS = useEventCategories();
@@ -52,9 +54,13 @@ export default function Events() {
             <Text style={styles.sub}>
               {loading ? 'Loading…' : `${events.length} events`}
             </Text>
-            <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/events/create' as any)}>
-              <Text style={styles.createBtnText}>+ Create</Text>
-            </TouchableOpacity>
+            {/* Creating an event is `authorize('ARTIST')` server-side, so the
+                entry point is hidden rather than leading a buyer to a 403. */}
+            {user.role === 'ARTIST' && (
+              <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/events/create' as any)}>
+                <Text style={styles.createBtnText}>+ Create</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 

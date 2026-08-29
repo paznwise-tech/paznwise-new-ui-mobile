@@ -45,7 +45,7 @@ export default function EventDetail() {
   }
 
   const cityName = getCityName(event.city);
-  const going = event._count?.attendees ?? event.attendeeCount ?? 0;
+  const going = event.going ?? event.attendeesCount ?? event._count?.attendees ?? 0;
   const bannerUri = resolveEventImage(event.bannerImage ?? event.eventImages?.[0]);
   const hasTiers = event.ticketTiers && event.ticketTiers.length > 0;
 

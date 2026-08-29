@@ -60,6 +60,12 @@ export interface EventResult extends SearchResultBase {
   category?: string;
   eventDate?: string;
   venueName?: string;
+  /** Flattened city name — the search index stores it as a string. */
+  cityName?: string;
+  /** Relative S3 key, resolved with resolveMedia. */
+  img?: string;
+  isFree?: boolean;
+  price?: number | string;
   name?: string;
 }
 

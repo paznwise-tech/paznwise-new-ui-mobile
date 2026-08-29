@@ -21,8 +21,19 @@ export interface HeroSlide {
   title: string;
   caption: string;
   img: string;
-  /** Category slug or product id the slide links to, when the API supplies one. */
-  targetSlug?: string;
+  eyebrow?: string;
+  ctaLabel?: string;
+  /**
+   * Where the slide points, as configured in the admin panel. An absolute
+   * app path (e.g. "/search"), not a slug — it is pushed as-is.
+   */
+  ctaLink?: string;
+}
+
+export interface EventCategory {
+  id: string;
+  name: string;
+  iconName?: string;
 }
 
 export interface PerformerCategory {
@@ -99,17 +110,29 @@ export const TaxonomyService = {
       title: s.title ?? s.heading ?? '',
       caption: s.caption ?? s.subtitle ?? s.description ?? '',
       img: resolveImage(s.image ?? s.imageUrl ?? s.img ?? s.bannerImage),
-      targetSlug: s.targetSlug ?? s.slug ?? s.link ?? undefined,
+      eyebrow: s.eyebrow ?? undefined,
+      ctaLabel: s.ctaLabel ?? undefined,
+      ctaLink: s.ctaLink ?? s.link ?? undefined,
     }));
   },
 
-  /** Event categories — `GET /event-categories`, public. */
-  async getEventCategories(): Promise<string[]> {
+  /**
+   * Event categories — `GET /event-categories`, public.
+   *
+   * Returns the id alongside the name: `POST /events/create` validates
+   * `categoryId` as a UUID, so a form that only knows category names cannot
+   * submit at all.
+   */
+  async getEventCategories(): Promise<EventCategory[]> {
     try {
       const res = await fetchApi<any>('/event-categories', { requiresAuth: false });
       return toList(res, 'categories', 'items')
-        .map((c: any) => c.name ?? c.title ?? c.label ?? '')
-        .filter(Boolean);
+        .map((c: any) => ({
+          id: String(c.id ?? ''),
+          name: c.name ?? c.title ?? c.label ?? '',
+          iconName: c.iconName ?? undefined,
+        }))
+        .filter((c: EventCategory) => !!c.id && !!c.name);
     } catch {
       return [];
     }
