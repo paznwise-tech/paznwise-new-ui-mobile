@@ -1,5 +1,5 @@
 // Home — Discovery feed with hero slider, categories, artworks, performers, events
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, FlatList, Dimensions, TouchableOpacity, ActivityIndicator, Share } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +19,9 @@ import { FeedPost } from '@/services/feedService';
 import { useMarketplaceProducts } from '@/hooks/useProducts';
 import { ArtistServiceApi } from '@/services/artistService';
 const { width } = Dimensions.get('window');
+
+/** The "no filter" sentinel for the Buzz rail's category chips. */
+const ALL = 'All';
 
 function HeroSlider() {
   const [active, setActive] = useState(0);
@@ -121,6 +124,12 @@ function CategoryBar() {
 }
 
 export default function Home() {
+  const { categories: allCategories } = useCategories();
+  const [buzzCategory, setBuzzCategory] = useState(ALL);
+  const buzzCategories = useMemo(
+    () => [ALL, ...allCategories.map(c => c.label).filter(l => l !== ALL)],
+    [allCategories],
+  );
   const [performers, setPerformers] = useState<Array<Performer & { serviceId: string }>>([]);
   const [performersLoading, setPerformersLoading] = useState(true);
   const { cartCount } = useCart();
@@ -148,8 +157,8 @@ export default function Home() {
 
   // Fetch feed data — personalized only once a real user is loaded
   useEffect(() => {
-    fetchTrendingFeed();
-  }, [fetchTrendingFeed]);
+    fetchTrendingFeed(buzzCategory === ALL ? undefined : buzzCategory);
+  }, [fetchTrendingFeed, buzzCategory]);
 
   // Fetch bookable performers (artist-services) for the "Live Performers" section
   useEffect(() => {
@@ -337,9 +346,34 @@ export default function Home() {
         )}
 
         {/* Buzz Posts */}
-        {trendingPosts.length > 0 && (
+        {(trendingPosts.length > 0 || buzzCategory !== ALL) && (
           <>
             <SectionHeader title="Buzz Posts" subtitle="What's happening in the community" onSeeAll={() => router.push('/feed')} />
+
+            {/* `/feed/trend` accepts `?category=`; without these chips the
+                rail could only ever show everything. */}
+            <FlatList
+              data={buzzCategories}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.catList}
+              keyExtractor={c => c}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.buzzChip, buzzCategory === item && styles.buzzChipActive]}
+                  onPress={() => setBuzzCategory(item)}
+                >
+                  <Text style={[styles.buzzChipText, buzzCategory === item && styles.buzzChipTextActive]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+
+            {trendingPosts.length === 0 && (
+              <Text style={styles.buzzEmpty}>No posts in {buzzCategory} yet.</Text>
+            )}
+
             <FlatList
               data={trendingPosts.slice(0, 10)}
               horizontal
@@ -441,6 +475,18 @@ const styles = StyleSheet.create({
   heroDots: { position: 'absolute', bottom: Spacing.sm, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: Colors.creamFaint },
   dotActive: { width: 18, backgroundColor: Colors.gold },
+  buzzChip: {
+    paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+    marginRight: Spacing.sm,
+  },
+  buzzChipActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '18' },
+  buzzChipText: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
+  buzzChipTextActive: { color: Colors.gold },
+  buzzEmpty: {
+    ...Typography.caption, fontSize: 13, color: Colors.creamDim,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.lg,
+  },
   catList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, gap: Spacing.sm },
   catChip: { paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard },
   catText: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
