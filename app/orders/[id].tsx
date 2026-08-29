@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { cartKeys } from '@/hooks/useCartQueries';
 import { downloadInvoice } from '@/utils/invoice';
 import type { Order } from '@/types';
+import { resolveImageOrDefault } from '@/utils/imageUrl';
 
 const ORDER_STEPS = [
   { key: 'PLACED', label: 'Order Placed', desc: 'Received & verified by Paznwise' },
@@ -183,14 +184,14 @@ export default function OrderDetailTrackingScreen() {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>Order Items</Text>
           {items.map((item, idx) => {
-            const imgUrl = item.productImage || item.imageUrl || item.product?.productImages?.[0];
+            // Resolved rather than used raw: these are often bare S3 keys.
+            const imgUrl = resolveImageOrDefault(
+              item.productImage ?? item.imageUrl ??
+              item.product?.productImages?.[0] ?? item.product?.images?.[0],
+            );
             return (
               <View key={idx} style={[styles.itemRow, idx < items.length - 1 && styles.itemBorder]}>
-                {imgUrl ? (
-                  <Image source={{ uri: imgUrl }} style={styles.itemImg} />
-                ) : (
-                  <View style={[styles.itemImg, { backgroundColor: Colors.bgInput }]} />
-                )}
+                <Image source={{ uri: imgUrl }} style={styles.itemImg} contentFit="cover" />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemTitle}>{item.productName || item.title || item.product?.title || 'Artwork'}</Text>
                   <Text style={styles.itemSub}>Qty: {item.quantity || 1}</Text>
