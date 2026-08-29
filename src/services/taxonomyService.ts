@@ -21,8 +21,13 @@ export interface HeroSlide {
   title: string;
   caption: string;
   img: string;
-  /** Category slug or product id the slide links to, when the API supplies one. */
-  targetSlug?: string;
+  eyebrow?: string;
+  ctaLabel?: string;
+  /**
+   * Where the slide points, as configured in the admin panel. An absolute
+   * app path (e.g. "/search"), not a slug — it is pushed as-is.
+   */
+  ctaLink?: string;
 }
 
 export interface PerformerCategory {
@@ -99,7 +104,9 @@ export const TaxonomyService = {
       title: s.title ?? s.heading ?? '',
       caption: s.caption ?? s.subtitle ?? s.description ?? '',
       img: resolveImage(s.image ?? s.imageUrl ?? s.img ?? s.bannerImage),
-      targetSlug: s.targetSlug ?? s.slug ?? s.link ?? undefined,
+      eyebrow: s.eyebrow ?? undefined,
+      ctaLabel: s.ctaLabel ?? undefined,
+      ctaLink: s.ctaLink ?? s.link ?? undefined,
     }));
   },
 

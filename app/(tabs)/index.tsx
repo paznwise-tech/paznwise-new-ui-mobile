@@ -29,18 +29,20 @@ function HeroSlider() {
       <Image source={{ uri: item.img }} style={styles.heroImg} contentFit="cover" transition={400} />
       <LinearGradient colors={['rgba(13,27,42,0.1)', 'rgba(13,27,42,0.7)', Colors.bg]} locations={[0, 0.6, 1]} style={styles.heroOverlay} />
       <View style={styles.heroContent}>
-        <Text style={styles.heroEyebrow}>Featured Collection</Text>
+        <Text style={styles.heroEyebrow}>{item.eyebrow ?? 'Featured Collection'}</Text>
         <Text style={styles.heroTitle}>{item.title}</Text>
         <Text style={styles.heroCaption}>{item.caption}</Text>
+        {/* ctaLink is an absolute app path configured in the admin panel,
+            not a category slug, so it is pushed as given. */}
         <TouchableOpacity
           style={styles.heroBtn}
           onPress={() =>
-            item.targetSlug
-              ? router.push(`/product/category/${item.targetSlug}` as any)
+            item.ctaLink?.startsWith('/')
+              ? router.push(item.ctaLink as any)
               : router.push('/(tabs)/browse')
           }
         >
-          <Text style={styles.heroBtnText}>Explore →</Text>
+          <Text style={styles.heroBtnText}>{item.ctaLabel ?? 'Explore'} →</Text>
         </TouchableOpacity>
       </View>
     </View>

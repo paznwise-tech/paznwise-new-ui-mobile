@@ -20,10 +20,16 @@ interface ApiEvent {
   city?: ApiEventCity | string;
   cityId?: string;
   isFree?: boolean;
-  price?: number;
+  /** Sent as a decimal STRING (e.g. "500"), or null for free events. */
+  price?: number | string | null;
   capacity?: number;
+  /** Moderation state. The API sends `approvalStatus`; `status` is always null. */
+  approvalStatus?: string;
   status?: string;
-  attendeeCount?: number;
+  rejectionReason?: string | null;
+  /** The API sends both, equal. `attendeeCount` (singular) does not exist. */
+  going?: number;
+  attendeesCount?: number;
   _count?: { attendees?: number };
 }
 
@@ -108,8 +114,10 @@ function normalizeEvent(e: ApiEvent, idx: number): Event {
     city: getCityName(e.city),
     category: e.category ?? 'Exhibition',
     img: resolveEventImage(e.bannerImage ?? e.eventImages?.[0]),
-    price: e.isFree ? 0 : (e.price ?? 0),
-    going: e._count?.attendees ?? e.attendeeCount ?? 0,
+    // Price arrives as a decimal string, so it is coerced — `Event.price` is
+    // typed number and screens compare it against 0 to show "Free".
+    price: e.isFree ? 0 : Number(e.price ?? 0),
+    going: e.going ?? e.attendeesCount ?? e._count?.attendees ?? 0,
   };
 }
 

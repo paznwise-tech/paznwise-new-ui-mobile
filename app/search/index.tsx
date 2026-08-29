@@ -98,7 +98,12 @@ export default function GlobalSearch() {
       onPress={() => router.push(`/events/${item.id}` as any)}
       activeOpacity={0.8}
     >
-      <View style={[styles.eventImg, { backgroundColor: Colors.bgInput }]} />
+      <Image
+        source={{ uri: resolveMedia(item.img) ?? FALLBACK_IMG }}
+        style={styles.eventImg}
+        contentFit="cover"
+        transition={200}
+      />
       <View style={styles.eventInfo}>
         <Text style={styles.eventTitle} numberOfLines={1}>{item.title}</Text>
         {item.eventDate ? (
@@ -106,7 +111,16 @@ export default function GlobalSearch() {
             📅 {new Date(item.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
           </Text>
         ) : null}
-        {item.venueName ? <Text style={styles.eventMeta} numberOfLines={1}>📍 {item.venueName}</Text> : null}
+        {item.venueName || item.cityName ? (
+          <Text style={styles.eventMeta} numberOfLines={1}>
+            📍 {[item.venueName, item.cityName].filter(Boolean).join(', ')}
+          </Text>
+        ) : null}
+        {item.price != null ? (
+          <Text style={styles.eventPrice}>
+            {item.isFree || Number(item.price) === 0 ? 'Free' : `₹${Number(item.price).toLocaleString('en-IN')}`}
+          </Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   ), []);
