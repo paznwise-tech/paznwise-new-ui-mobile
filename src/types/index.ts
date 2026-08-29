@@ -85,6 +85,9 @@ export interface UserProfile {
   isPerformer: boolean;
   role?: string;
   location?: string;
+  /** Owner-only; the API omits these from public profiles. */
+  phone?: string;
+  cityId?: string;
   followersCount: number;
   followingCount: number;
   postsCount: number;

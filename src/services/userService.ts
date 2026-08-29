@@ -20,6 +20,8 @@ export interface PublicUser {
   isArtist?: boolean;
   isPerformer?: boolean;
   location?: string;
+  /** Preferred city UUID; owner-only, used to prefill the edit form. */
+  cityId?: string;
   followersCount: number;
   followingCount: number;
   postsCount: number;
@@ -43,6 +45,11 @@ interface ProfileApiData {
   followingCount?: number;
   totalLikes?: number;
   location?: string | null;
+  /** Owner-only contact details — absent from public profiles. */
+  email?: string | null;
+  phone?: string | null;
+  cityId?: string | null;
+  cityName?: string | null;
   posts?: any[];
   recentPosts?: any[];
   // nested user object (may be present on /profile/me and PUT response)
@@ -64,15 +71,18 @@ function normalizeProfile(d: ProfileApiData): PublicUser {
     id: d.userId ?? d.user?.id ?? d.id,
     name: d.name ?? d.user?.name ?? '',
     username: d.username ?? d.user?.username ?? '',
-    email: d.user?.email,
-    phone: d.user?.phone,
+    // The payload has no nested `user` object — these are top level, and are
+    // returned only for your own profile.
+    email: d.email ?? d.user?.email,
+    phone: d.phone ?? d.user?.phone,
+    cityId: d.cityId ?? undefined,
     avatar: resolveAvatarUrl(d.avatar ?? d.user?.picture),
     bio: d.bio ?? '',
     isVerified: d.isVerified ?? d.user?.isVerified ?? false,
     role: role || undefined,
     isArtist: role === 'ARTIST',
     isPerformer: role === 'PERFORMER',
-    location: d.location ?? undefined,
+    location: d.cityName ?? d.location ?? undefined,
     followersCount: d.followersCount ?? 0,
     followingCount: d.followingCount ?? 0,
     postsCount: d.postsCount ?? 0,
@@ -124,6 +134,11 @@ export interface UpdateProfileData {
   username?: string;
   bio?: string;
   role?: string;
+  phone?: string;
+  /** City UUID from `/locations/cities`; '' clears it. */
+  preferredCityId?: string;
+  /** New password; 8 characters minimum, enforced server-side too. */
+  password?: string;
   avatarUri?: string;
   avatarMimeType?: string;
 }
@@ -142,6 +157,11 @@ export const UserService = {
     if (data.username !== undefined) form.append('username', data.username);
     if (data.bio !== undefined) form.append('bio', data.bio);
     if (data.role !== undefined) form.append('role', data.role);
+    // Accepted by PUT /user/profile but never sent before, so they could not
+    // be edited from the app at all.
+    if (data.phone !== undefined) form.append('phone', data.phone);
+    if (data.preferredCityId !== undefined) form.append('preferredCityId', data.preferredCityId);
+    if (data.password) form.append('password', data.password);
     if (data.avatarUri) {
       const filename = data.avatarUri.split('/').pop() ?? 'avatar.jpg';
       form.append('avatar', { uri: data.avatarUri, type: data.avatarMimeType ?? 'image/jpeg', name: filename } as any);

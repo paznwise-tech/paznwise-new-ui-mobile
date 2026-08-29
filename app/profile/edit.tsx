@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
@@ -8,6 +8,7 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { useUser } from '@/context/AppContext';
 import { UserService } from '@/services/userService';
+import { useCities } from '@/hooks/useTaxonomy';
 
 const ROLES = ['ARTIST', 'BUYER', 'ORGANIZER'] as const;
 type Role = typeof ROLES[number];
@@ -25,6 +26,22 @@ export default function EditProfile() {
   const [username, setUsername] = useState(user.username);
   const [bio, setBio] = useState(user.bio);
   const [role, setRole] = useState<Role | ''>((user.role as Role) || '');
+  // Accepted by PUT /user/profile all along, but the form never offered them.
+  const [phone, setPhone] = useState(user.phone ?? '');
+  const [cityId, setCityId] = useState(user.cityId ?? '');
+  const [citySearch, setCitySearch] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+
+  const { data: cities = [] } = useCities();
+  const cityName = cities.find(c => c.id === cityId)?.name ?? user.location ?? '';
+
+  /** Matches first, capped — there are 249 cities. */
+  const visibleCities = useMemo(() => {
+    const q = citySearch.trim().toLowerCase();
+    const matches = q ? cities.filter(c => c.name.toLowerCase().includes(q)) : cities;
+    return matches.slice(0, 30);
+  }, [cities, citySearch]);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [photoVisible, setPhotoVisible] = useState(false);
   const [avatarMime, setAvatarMime] = useState<string>('image/jpeg');
@@ -50,6 +67,20 @@ export default function EditProfile() {
   }, []);
 
   const handleSave = useCallback(async () => {
+    // Mirrors the server's rules so a bad value is caught before the request.
+    const digits = phone.replace(/\D/g, '');
+    if (phone.trim() && digits.length !== 10) {
+      setError('Please enter a 10-digit phone number, or leave it blank.');
+      return;
+    }
+    if (password && password.length < 8) {
+      setError('A new password must be at least 8 characters.');
+      return;
+    }
+    if (password && password !== confirm) {
+      setError('The two passwords do not match.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -57,6 +88,9 @@ export default function EditProfile() {
         name,
         username,
         bio,
+        phone,
+        preferredCityId: cityId,
+        ...(password ? { password } : {}),
         ...(role ? { role } : {}),
         ...(avatarUri ? { avatarUri, avatarMimeType: avatarMime } : {}),
       });
@@ -67,7 +101,7 @@ export default function EditProfile() {
     } finally {
       setSaving(false);
     }
-  }, [name, username, bio, role, avatarUri, avatarMime, updateUserProfile]);
+  }, [name, username, bio, role, phone, cityId, password, confirm, avatarUri, avatarMime, updateUserProfile]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(
@@ -139,6 +173,68 @@ export default function EditProfile() {
           ))}
 
           <View style={styles.fieldGroup}>
+            <Text style={styles.label}>PHONE</Text>
+            <TextInput
+              value={phone}
+              onChangeText={t => setPhone(t.replace(/\D/g, '').slice(0, 10))}
+              keyboardType="phone-pad"
+              maxLength={10}
+              placeholder="10-digit mobile number"
+              placeholderTextColor={Colors.creamFaint}
+              style={styles.input}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>CITY</Text>
+            <TextInput
+              value={citySearch}
+              onChangeText={setCitySearch}
+              placeholder={cityName || 'Search for your city'}
+              placeholderTextColor={Colors.creamFaint}
+              autoCorrect={false}
+              style={styles.input}
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ flexDirection: 'row', gap: Spacing.sm, paddingVertical: Spacing.sm }}
+            >
+              {visibleCities.map(c => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.cityChip, cityId === c.id && styles.cityChipActive]}
+                  onPress={() => { setCityId(c.id); setCitySearch(''); }}
+                >
+                  <Text style={[styles.cityChipText, cityId === c.id && { color: Colors.gold }]}>{c.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>NEW PASSWORD</Text>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              placeholder="Leave blank to keep your current password"
+              placeholderTextColor={Colors.creamFaint}
+              style={styles.input}
+            />
+            {!!password && (
+              <TextInput
+                value={confirm}
+                onChangeText={setConfirm}
+                secureTextEntry
+                placeholder="Confirm new password"
+                placeholderTextColor={Colors.creamFaint}
+                style={[styles.input, { marginTop: Spacing.sm }]}
+              />
+            )}
+          </View>
+
+          <View style={styles.fieldGroup}>
             <Text style={styles.label}>ROLE</Text>
             <View style={styles.roleRow}>
               {ROLES.map(r => (
@@ -201,6 +297,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.cream,
   },
+  cityChip: {
+    paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full,
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgInput,
+  },
+  cityChipActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '18' },
+  cityChipText: { ...Typography.caption, fontSize: 12, color: Colors.creamDim },
   roleRow: { flexDirection: 'row', gap: Spacing.sm },
   roleBtn: { flex: 1, paddingVertical: 10, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, alignItems: 'center', backgroundColor: Colors.bgInput },
   roleBtnActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '20' },

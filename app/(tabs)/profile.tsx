@@ -215,6 +215,8 @@ export default function Profile() {
           <Text style={styles.name}>{user.name} {user.isVerified && <Text style={{ color: Colors.gold }}>✓</Text>}</Text>
           <Text style={styles.email}>{user.username} · {roleText}</Text>
           <Text style={styles.bio}>{user.bio}</Text>
+          {/* Returned by the profile endpoint but never rendered before. */}
+          {!!user.location && <Text style={styles.location}>📍 {user.location}</Text>}
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.editBtn} onPress={() => router.push('/profile/edit' as any)}>
               <Text style={styles.editBtnText}>Edit Profile</Text>
@@ -236,6 +238,12 @@ export default function Profile() {
               <Text style={styles.statVal}>{user.postsCount}</Text>
               <Text style={styles.statLabel}>Posts</Text>
             </View>
+            {user.totalLikes != null && (
+              <View style={styles.stat}>
+                <Text style={styles.statVal}>{user.totalLikes}</Text>
+                <Text style={styles.statLabel}>Likes</Text>
+              </View>
+            )}
           </View>
         </LinearGradient>
 
@@ -309,6 +317,7 @@ const styles = StyleSheet.create({
   editAvatarIcon: { fontSize: 13, color: Colors.bg },
   name: { ...Typography.heading, fontSize: 22, marginBottom: 4 },
   email: { ...Typography.caption, fontSize: 13, marginBottom: Spacing.sm },
+  location: { ...Typography.caption, fontSize: 13, color: Colors.creamDim, marginTop: 2 },
   bio: { ...Typography.caption, fontSize: 13, textAlign: 'center', marginHorizontal: Spacing.xl, marginBottom: Spacing.md, color: Colors.creamDim, lineHeight: 20 },
   actionRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xl },
   editBtn: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.lg, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },
