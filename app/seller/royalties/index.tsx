@@ -5,12 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ProductService, type MerchandiseRoyalty } from '@/services/productService';
-import { MEDIA_BASE_URL } from '@/services/api';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
 function resolveImg(url: string | null): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url) || undefined;
 }
 
 /**

@@ -8,14 +8,9 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ProductService, type SellerDashboard as SellerDashboardData } from '@/services/productService';
-import { MEDIA_BASE_URL } from '@/services/api';
+import { getProductImageUrl } from '@/utils/imageUrl';
 
-function resolveImg(p: any): string {
-  const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? '';
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=200';
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-}
+const resolveImg = (p: any): string => getProductImageUrl(p);
 
 function StatBox({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (

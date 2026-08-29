@@ -1,4 +1,5 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi } from './api';
+import { getProductImageUrl } from '@/utils/imageUrl';
 import { Artwork } from '@/types';
 
 /**
@@ -10,11 +11,7 @@ import { Artwork } from '@/types';
  * path, not a single toggle.
  */
 
-function resolveImage(url: string | null | undefined): string {
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=400';
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-}
+
 
 function normalizeArtwork(p: any): Artwork {
   return {
@@ -23,7 +20,7 @@ function normalizeArtwork(p: any): Artwork {
     price: p.price ?? 0,
     artist: p.artist?.name ?? p.createdBy?.name ?? p.sellerName ?? p.seller?.name ?? '',
     location: p.location ?? p.city ?? '',
-    img: resolveImage(p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? p.img ?? p.thumbnail),
+    img: getProductImageUrl(p),
     medium: p.medium ?? p.mediumType ?? undefined,
     category: p.category ?? p.categoryName ?? undefined,
   };

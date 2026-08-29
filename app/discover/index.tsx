@@ -11,10 +11,10 @@ import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ArtCard } from '@/components/product/ArtCard';
 import { EventCard } from '@/components/events/EventCard';
 import { ProductService } from '@/services/productService';
-import { MEDIA_BASE_URL } from '@/services/api';
 import { useCategories } from '@/hooks/useTaxonomy';
 import { EventService } from '@/services/eventService';
 import { Artwork, Event } from '@/types';
+import { getProductImageUrl } from '@/utils/imageUrl';
 
 const { width } = Dimensions.get('window');
 
@@ -33,12 +33,7 @@ function emojiFor(label: string): string {
   return '🖌️';
 }
 
-function resolveProductImg(p: any): string {
-  const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? '';
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=400';
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-}
+const resolveProductImg = (p: any): string => getProductImageUrl(p);
 
 function normalizeArtwork(p: any): Artwork {
   return {

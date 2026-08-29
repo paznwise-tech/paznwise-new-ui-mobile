@@ -1,4 +1,5 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi } from './api';
+import { getProductImageUrl } from '@/utils/imageUrl';
 
 /**
  * Cart — src/cart/cart.routes.js.
@@ -20,11 +21,7 @@ export interface CartLine {
   stock?: number;
 }
 
-function resolveImage(url: string | null | undefined): string {
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=400';
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-}
+
 
 function normalizeLine(i: any): CartLine {
   const product = i.product ?? i;
@@ -34,9 +31,9 @@ function normalizeLine(i: any): CartLine {
     title: product.title ?? product.name ?? 'Untitled',
     price: Number(i.price ?? product.price ?? 0),
     quantity: Number(i.quantity ?? 1),
-    img: resolveImage(
-      product.images?.[0]?.url ?? product.images?.[0] ?? product.image ?? product.thumbnail,
-    ),
+    // `images` is empty on live data; the real URLs are in productImages
+    // and thumbnailUrl, which this helper checks in turn.
+    img: getProductImageUrl(product),
     stock: product.stock ?? product.availableStock,
   };
 }

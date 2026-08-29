@@ -1,10 +1,14 @@
-import { fetchApi, API_BASE_URL } from './api';
+import { fetchApi } from './api';
 import { ApiResponse } from '@/types';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
+/**
+ * Shared resolver. This used to concatenate the API base with the path and
+ * no separator, so a bare S3 key such as `users/<id>/avatar.jpg` became
+ * `https://paznwise.gujberry.comusers/...` — not a valid URL at all.
+ */
 function resolveUrl(url: string | undefined | null): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return `${API_BASE_URL}${url}`;
+  return resolveImageUrl(url) || undefined;
 }
 
 // ─── Shared normalized shape ──────────────────────────────────────────────────

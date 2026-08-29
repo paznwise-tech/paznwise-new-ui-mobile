@@ -1,4 +1,5 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi } from './api';
+import { resolveImageUrl, getProductImageUrl } from '@/utils/imageUrl';
 
 /**
  * Product reviews — src/product-review/product-review.router.js, mounted at
@@ -25,18 +26,14 @@ export interface ReviewSummary {
   distribution: Record<number, number>;
 }
 
-function resolveImage(url: string | null | undefined): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-}
+
 
 function normalizeReview(r: any): Review {
   return {
     id: r.id ?? r._id ?? '',
     productId: r.productId ?? r.product?.id ?? '',
     productTitle: r.product?.title ?? r.productTitle ?? 'Product',
-    productImage: resolveImage(r.product?.images?.[0]?.url ?? r.product?.images?.[0] ?? r.productImage),
+    productImage: resolveImageUrl(r.productImage) || (r.product ? getProductImageUrl(r.product) : undefined),
     rating: r.rating ?? r.stars ?? 0,
     comment: r.comment ?? r.review ?? r.text ?? '',
     createdAt: r.createdAt ?? new Date().toISOString(),

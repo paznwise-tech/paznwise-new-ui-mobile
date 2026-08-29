@@ -14,7 +14,7 @@ import { useProductDetail } from '@/hooks/useProducts';
 import { UserService, PublicUser } from '@/services/userService';
 import { ReviewService, Review } from '@/services/reviewService';
 import { ProductService } from '@/services/productService';
-import { API_BASE_URL } from '@/services/api';
+import { resolveImageOrDefault, DEFAULT_IMAGE } from '@/utils/imageUrl';
 
 const { width } = Dimensions.get('window');
 
@@ -108,11 +108,7 @@ export default function ProductDetail() {
   const liked = product ? isFavorite(Number(product.id)) : false;
   const inCart = product ? cart.some(c => c.productId === String(product.id)) : false;
 
-  const getImageUrl = (url?: string) => {
-    if (!url) return 'https://via.placeholder.com/400?text=No+Image';
-    if (url.startsWith('http')) return url;
-    return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-  };
+  const getImageUrl = (url?: string) => resolveImageOrDefault(url);
 
   const handleLikePress = useCallback(() => {
     if (product) toggleFavorite(Number(product.id));
@@ -188,7 +184,7 @@ export default function ProductDetail() {
   const rawImages = [product.thumbnailUrl, ...(product.productImages ?? []), ...(product.images ?? [])]
     .filter((v): v is string => Boolean(v))
     .filter((v, i, a) => a.indexOf(v) === i);
-  const images = rawImages.length > 0 ? rawImages.map(getImageUrl) : ['https://via.placeholder.com/400?text=No+Image'];
+  const images = rawImages.length > 0 ? rawImages.map(getImageUrl) : [DEFAULT_IMAGE];
 
   const coverImage = images[0];
 

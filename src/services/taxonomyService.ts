@@ -1,4 +1,5 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi } from './api';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
 /**
  * Catalogue taxonomy and homepage content.
@@ -42,10 +43,10 @@ export interface PerformerCategory {
   label: string;
 }
 
+/** Hero slides are promotional; an on-theme photo beats an empty frame. */
 function resolveImage(url: string | null | undefined): string {
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800&h=500&fit=crop';
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url)
+    || 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800&h=500&fit=crop';
 }
 
 // The API has no colour for a category, but the chips are colour-coded.

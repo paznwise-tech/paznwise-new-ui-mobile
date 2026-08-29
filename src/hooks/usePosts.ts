@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FeedService, FeedPost } from '../services/feedService';
 import { UserService } from '../services/userService';
-import { API_BASE_URL } from '../services/api';
 import { useFeed } from '../context/AppContext';
+import { resolveImageUrl } from '../utils/imageUrl';
 
+/** Relative paths here are S3 keys, not paths on the API host. */
 function resolveUrl(url: string | undefined | null): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url) || undefined;
 }
 
 function mapProfilePost(p: any): FeedPost {

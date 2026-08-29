@@ -8,6 +8,7 @@ import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { useMyPosts } from '@/hooks/usePosts';
+import { resolveImageOrDefault } from '@/utils/imageUrl';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - Spacing.md * 2 - Spacing.sm) / 2;
@@ -82,7 +83,7 @@ export default function MyPosts() {
           renderItem={({ item }) => (
             <View style={styles.card}>
               <Image
-                source={{ uri: item.imageUrls?.[0] ?? 'https://via.placeholder.com/400?text=No+Image' }}
+                source={{ uri: resolveImageOrDefault(item.imageUrls?.[0]) }}
                 style={styles.image}
                 contentFit="cover"
               />

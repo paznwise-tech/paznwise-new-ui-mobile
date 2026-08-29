@@ -12,12 +12,10 @@ import { useFeed, useUser } from '@/context/AppContext';
 import { FeedPost, FeedArtist, FeedService } from '@/services/feedService';
 import { UserService } from '@/services/userService';
 import { CommentService, Comment } from '@/services/commentService';
-import { API_BASE_URL } from '@/services/api';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
 function resolveUrl(url: string | undefined | null): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return `${API_BASE_URL}${url}`;
+  return resolveImageUrl(url) || undefined;
 }
 
 function timeAgo(iso: string): string {

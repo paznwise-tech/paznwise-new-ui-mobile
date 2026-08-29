@@ -5,8 +5,8 @@ import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { useMyProducts } from '@/hooks/useProducts';
-import { API_BASE_URL } from '@/services/api';
 import { ProductService } from '@/services/productService';
+import { resolveImageOrDefault } from '@/utils/imageUrl';
 
 export default function MyListings() {
   const { products, loading, error, refresh, deleteProduct } = useMyProducts();
@@ -73,11 +73,7 @@ export default function MyListings() {
     );
   };
 
-  const getImageUrl = (url?: string) => {
-    if (!url) return 'https://via.placeholder.com/400?text=No+Image';
-    if (url.startsWith('http')) return url;
-    return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-  };
+  const getImageUrl = (url?: string) => resolveImageOrDefault(url);
 
   return (
     <View style={styles.container}>

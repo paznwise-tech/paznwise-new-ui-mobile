@@ -8,9 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { ArtCard } from '@/components/product/ArtCard';
 import { ProductService } from '@/services/productService';
-import { MEDIA_BASE_URL } from '@/services/api';
 import { useCategoryBySlug } from '@/hooks/useTaxonomy';
 import { Artwork } from '@/types';
+import { getProductImageUrl } from '@/utils/imageUrl';
 
 const SORT_OPTIONS = [
   { label: 'Newest',          value: 'newest' },
@@ -22,12 +22,7 @@ const SORT_OPTIONS = [
 
 type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
-function resolveProductImg(p: any): string {
-  const url = p.images?.[0]?.url ?? p.images?.[0] ?? p.image ?? '';
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=400';
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-}
+const resolveProductImg = (p: any): string => getProductImageUrl(p);
 
 function normalizeArtwork(p: any): Artwork {
   return {

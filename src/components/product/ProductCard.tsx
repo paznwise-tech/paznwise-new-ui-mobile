@@ -3,8 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-nativ
 import { Image } from 'expo-image';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { ProductResponse } from '@/types';
-import { API_BASE_URL } from '@/services/api';
 import { router } from 'expo-router';
+import { getProductImageUrl } from '@/utils/imageUrl';
 
 interface ProductCardProps {
   product: ProductResponse;
@@ -22,16 +22,9 @@ export default function ProductCard({ product, style, onPress }: ProductCardProp
     discountPercentage = Math.round(((product.comparePrice - product.price) / product.comparePrice) * 100);
   }
 
-  // Handle relative image URLs
-  const getImageUrl = (url: string) => {
-    if (!url) return 'https://via.placeholder.com/400?text=No+Image';
-    if (url.startsWith('http')) return url;
-    // Prefix relative paths with the API base URL
-    return `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
-  };
-
-  const rawCover = product.thumbnailUrl ?? product.productImages?.[0] ?? product.images?.[0];
-  const coverImage = rawCover ? getImageUrl(rawCover) : 'https://via.placeholder.com/400?text=No+Image';
+  // Checks images, productImages and thumbnailUrl in turn, and resolves
+  // relative values as S3 keys rather than paths on the API host.
+  const coverImage = getProductImageUrl(product);
 
   const handlePress = () => {
     if (onPress) {
