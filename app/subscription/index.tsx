@@ -1,12 +1,13 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
-import { usePlans, useMySubscription, useSubscribe, useCancelSubscription } from '@/hooks/useSubscription';
-import { LIMIT_LABELS, type BillingCycle, type SubscriptionPlan } from '@/services/subscriptionService';
+import { usePlans, useMySubscription, useCancelSubscription } from '@/hooks/useSubscription';
+import { SubscriptionService, LIMIT_LABELS, type BillingCycle, type SubscriptionPlan } from '@/services/subscriptionService';
+import { useRazorpayPayment } from '@/payments/useRazorpayPayment';
 import { useUser } from '@/context/AppContext';
 
 function limitText(n: number): string {
@@ -73,12 +74,11 @@ function PlanCard({
 }
 
 export default function Subscription() {
-  const { status } = useUser();
+  const { status, user } = useUser();
   const signedIn = status === 'signedIn';
 
   const { data: plans = [], isLoading: plansLoading } = usePlans();
   const { data: mine, isLoading: mineLoading } = useMySubscription(signedIn);
-  const subscribe = useSubscribe();
   const cancel = useCancelSubscription();
 
   const [cycle, setCycle] = useState<BillingCycle>('MONTHLY');
@@ -89,6 +89,47 @@ export default function Subscription() {
   );
 
   const currentName = mine?.subscription?.planName;
+
+  // The plan being bought, held across the async create → pay → verify
+  // sequence so the confirmation can name it.
+  const pendingPlan = useRef<SubscriptionPlan | null>(null);
+
+  /**
+   * A paid plan settles through Razorpay like every other paid flow. The
+   * server activates it only after verifying the signature — it used to be
+   * granted on the client's word, so any plan could be had for nothing.
+   */
+  const { pay, processing } = useRazorpayPayment<void>({
+    createOrder: async () => {
+      const plan = pendingPlan.current;
+      if (!plan) throw new Error('No plan selected.');
+
+      const res = await SubscriptionService.subscribe(plan.id, 'UPI');
+
+      // A free plan is already active; skip the gateway.
+      if (!res.requiresPayment || !res.razorpayOrderId || !res.keyId) return null;
+
+      return {
+        razorpayOrderId: res.razorpayOrderId,
+        keyId: res.keyId,
+        amountPaise: res.amountPaise ?? Math.round(plan.price * 100),
+        description: `${res.planName ?? plan.name} subscription`,
+        prefill: { name: user.name, email: user.email },
+      };
+    },
+    verify: async payment => {
+      await SubscriptionService.verifyPayment({
+        razorpay_order_id: payment.razorpay_order_id,
+        razorpay_payment_id: payment.razorpay_payment_id,
+        razorpay_signature: payment.razorpay_signature,
+      });
+    },
+    onFree: async () => {},
+    onSuccess: () => {
+      Alert.alert('Plan updated', `You are now on ${pendingPlan.current?.name ?? 'your new plan'}.`);
+    },
+    invalidate: [['my-subscription'], ['plans']],
+  });
 
   const handleSelect = useCallback((plan: SubscriptionPlan) => {
     if (!signedIn) {
@@ -104,18 +145,14 @@ export default function Subscription() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Confirm',
-          onPress: async () => {
-            try {
-              await subscribe.mutateAsync({ planId: plan.id, paymentMethod: 'UPI' });
-              Alert.alert('Plan updated', `You are now on ${plan.name}.`);
-            } catch (e: any) {
-              Alert.alert('Could not change plan', e?.message ?? 'Please try again.');
-            }
+          onPress: () => {
+            pendingPlan.current = plan;
+            pay();
           },
         },
       ],
     );
-  }, [signedIn, subscribe]);
+  }, [signedIn, pay]);
 
   const handleCancel = useCallback(() => {
     Alert.alert('Cancel subscription', 'You will drop back to the free plan at the end of your cycle.', [
@@ -215,7 +252,7 @@ export default function Subscription() {
               plan={plan}
               current={plan.name === currentName}
               onSelect={() => handleSelect(plan)}
-              busy={subscribe.isPending}
+              busy={processing}
             />
           ))}
 
