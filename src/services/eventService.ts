@@ -17,6 +17,8 @@ interface ApiEvent {
   venueAddress?: string;
   eventDate?: string;
   eventEndDate?: string;
+  /** After this date the event stops accepting bookings. */
+  bookingDeadline?: string | null;
   city?: ApiEventCity | string;
   cityId?: string;
   isFree?: boolean;
@@ -334,9 +336,11 @@ export const EventService = {
     title: string;
     description: string;
     organiserName?: string;
+    /** UUID from `/event-categories`; the API validates this, not the name. */
+    categoryId: string;
     city: string;
     venue: string;
-    address?: string;
+    address: string;
     dateFrom: string;
     dateTo?: string;
     timeFrom?: string;
@@ -352,7 +356,7 @@ export const EventService = {
       body: JSON.stringify({
         title: data.title,
         description: data.description,
-        category: data.eventType,
+        categoryId: data.categoryId,
         venueName: data.venue,
         venueAddress: data.address,
         city: data.city,

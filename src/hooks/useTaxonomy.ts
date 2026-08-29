@@ -43,13 +43,19 @@ export function useHeroSlides() {
   });
 }
 
-export function useEventCategories() {
-  const query = useQuery({
+/** The raw `{ id, name }` list — needed wherever a `categoryId` is submitted. */
+export function useEventCategoryOptions() {
+  return useQuery({
     queryKey: ['event-categories'],
     queryFn: TaxonomyService.getEventCategories,
     ...LONG_LIVED,
   });
-  return ['All', ...(query.data ?? [])];
+}
+
+/** Category names with an "All" lead-in, for filter chips. */
+export function useEventCategories() {
+  const query = useEventCategoryOptions();
+  return ['All', ...(query.data ?? []).map(c => c.name)];
 }
 
 export function usePerformerCategories() {

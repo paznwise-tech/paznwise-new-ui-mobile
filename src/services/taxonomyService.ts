@@ -30,6 +30,12 @@ export interface HeroSlide {
   ctaLink?: string;
 }
 
+export interface EventCategory {
+  id: string;
+  name: string;
+  iconName?: string;
+}
+
 export interface PerformerCategory {
   id: string;
   key: string;
@@ -110,13 +116,23 @@ export const TaxonomyService = {
     }));
   },
 
-  /** Event categories — `GET /event-categories`, public. */
-  async getEventCategories(): Promise<string[]> {
+  /**
+   * Event categories — `GET /event-categories`, public.
+   *
+   * Returns the id alongside the name: `POST /events/create` validates
+   * `categoryId` as a UUID, so a form that only knows category names cannot
+   * submit at all.
+   */
+  async getEventCategories(): Promise<EventCategory[]> {
     try {
       const res = await fetchApi<any>('/event-categories', { requiresAuth: false });
       return toList(res, 'categories', 'items')
-        .map((c: any) => c.name ?? c.title ?? c.label ?? '')
-        .filter(Boolean);
+        .map((c: any) => ({
+          id: String(c.id ?? ''),
+          name: c.name ?? c.title ?? c.label ?? '',
+          iconName: c.iconName ?? undefined,
+        }))
+        .filter((c: EventCategory) => !!c.id && !!c.name);
     } catch {
       return [];
     }

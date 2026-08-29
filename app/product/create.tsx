@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Alert,
@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { ProductService } from '@/services/productService';
+import { ArtistProfileService } from '@/services/artistProfileService';
 import { ProductType, EditionType, ShippingPreference } from '@/types';
 
 const STEPS = ['Photos', 'Details', 'Policies'];
@@ -18,6 +19,36 @@ const STEPS = ['Photos', 'Details', 'Policies'];
 type PickedImage = { uri: string; name: string; type: string };
 
 export default function CreateProduct() {
+  /**
+   * Seller onboarding gate.
+   *
+   * `POST /products` requires only a session, so any signed-in user can
+   * list a product without completing seller onboarding. The listing then
+   * has no verified artist behind it. Checked here rather than relying on
+   * the API to refuse.
+   */
+  const [gateChecked, setGateChecked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    ArtistProfileService.getMyProfile().then(profile => {
+      if (cancelled) return;
+      if (!profile) {
+        Alert.alert(
+          'Set up your seller profile',
+          'You need a verified artist profile before you can list artwork.',
+          [
+            { text: 'Not now', style: 'cancel', onPress: () => router.back() },
+            { text: 'Set up', onPress: () => router.replace('/artist/register-artist' as any) },
+          ],
+        );
+      }
+      setGateChecked(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  void gateChecked;
+
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,8 +113,12 @@ export default function CreateProduct() {
   }, []);
 
   const canProceed = () => {
-    if (step === 0) return images.length > 0 && title.trim() !== '' && price.trim() !== '';
-    if (step === 1) return stock.trim() !== '';
+    // A price or stock of 0 passed a non-empty check and produced a listing
+    // that could not actually be bought.
+    if (step === 0) {
+      return images.length > 0 && title.trim() !== '' && Number(price) > 0;
+    }
+    if (step === 1) return Number(stock) >= 1;
     return true;
   };
 
@@ -91,7 +126,9 @@ export default function CreateProduct() {
     if (!canProceed()) {
       Alert.alert(
         'Required fields',
-        step === 0 ? 'Please add at least 1 photo, a title, and a price.' : 'Please fill in stock quantity.',
+        step === 0
+          ? 'Add at least one photo, a title, and a price above ₹0.'
+          : 'Stock must be at least 1 — a listing with no stock cannot be bought.',
       );
       return;
     }
@@ -106,8 +143,8 @@ export default function CreateProduct() {
     if (yearCreated) {
       const yr = parseInt(yearCreated, 10);
       const currentYear = new Date().getFullYear();
-      if (isNaN(yr) || yr > currentYear) {
-        const msg = `Year created cannot be in the future. Enter a year up to ${currentYear}.`;
+      if (isNaN(yr) || yr > currentYear || yr < 1000) {
+        const msg = `Enter a 4-digit year up to ${currentYear}.`;
         setError(msg);
         Alert.alert('Invalid Year', msg);
         return;
@@ -359,7 +396,7 @@ export default function CreateProduct() {
             <View style={styles.row}>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={styles.fieldLabel}>YEAR CREATED</Text>
-                <TextInput value={yearCreated} onChangeText={setYearCreated} placeholder="2024" placeholderTextColor={Colors.creamFaint} keyboardType="numeric" style={styles.input} />
+                <TextInput value={yearCreated} onChangeText={setYearCreated} placeholder="2024" placeholderTextColor={Colors.creamFaint} keyboardType="numeric" maxLength={4} style={styles.input} />
               </View>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={styles.fieldLabel}>TAGS (comma separated)</Text>
