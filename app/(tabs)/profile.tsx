@@ -77,16 +77,22 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
   const sections: MenuSection[] = [
     { title: 'Shopping', items: shopping },
     { title: 'Activity', items: activity },
-    { title: 'Selling', items: selling },
   ];
 
-  if (opts.isArtist || opts.isPerformer) {
+  // Supply-side sections are shown only to the role that can use them. Every
+  // route behind them is `authorize()`-gated server-side, so offering one to
+  // a buyer only leads to a 403 at the end of a long form.
+  const sells = opts.isArtist || opts.isPerformer;
+
+  if (sells) {
+    sections.push({ title: 'Selling', items: selling });
     sections.push({ title: 'Artist', items: artist });
   } else {
+    // Not an artist yet: one route in, and nothing that would 403.
     sections.push({
-      title: 'Artist',
+      title: 'Sell on Paznwise',
       items: [
-        { icon: '🎤', label: 'Register as Performer', sub: 'Get booked for events', route: '/artist/register-artist' },
+        { icon: '🎨', label: 'Become an artist', sub: 'List artwork and take bookings', route: '/artist/register-artist' },
       ],
     });
   }
@@ -98,7 +104,7 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
 }
 
 export default function Profile() {
-  const { user, logout, loadProfile } = useUser();
+  const { user, logout, loadProfile, activeRole } = useUser();
   const [photoVisible, setPhotoVisible] = useState(false);
   const [totalUnread, setTotalUnread] = useState(0);
 
@@ -118,17 +124,19 @@ export default function Profile() {
   const menuSections = useMemo(
     () =>
       buildMenu({
-        isArtist: user.isArtist || user.role === 'ARTIST',
-        isPerformer: user.isPerformer,
-        isOrganizer: user.role === 'ORGANIZER',
+        // `activeRole` is what the server enforces; `user.role` is the account
+        // role and can be ARTIST while the session is still acting as BUYER.
+        isArtist: activeRole === 'ARTIST',
+        isPerformer: activeRole === 'ARTIST' && !!user.isPerformer,
+        isOrganizer: activeRole === 'ORGANIZER',
       }),
-    [user.isArtist, user.isPerformer, user.role],
+    [activeRole, user.isPerformer],
   );
 
   const roleText = useMemo(() => {
     const map: Record<string, string> = { ARTIST: 'Artist', BUYER: 'Buyer', ORGANIZER: 'Organizer', ADMIN: 'Admin' };
-    return user.role ? (map[user.role] ?? user.role) : 'Member';
-  }, [user.role]);
+    return activeRole ? (map[activeRole] ?? activeRole) : 'Member';
+  }, [activeRole]);
 
   const handleSignOut = useCallback(async () => {
     // No explicit navigation: logout flips the session to signedOut and the

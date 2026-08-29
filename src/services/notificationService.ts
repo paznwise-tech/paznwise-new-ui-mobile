@@ -13,6 +13,9 @@ export interface AppNotification {
     eventId?: string;
     orderId?: string;
     bookingId?: string;
+    postId?: string | number;
+    serviceId?: string;
+    rentalId?: string;
   };
 }
 

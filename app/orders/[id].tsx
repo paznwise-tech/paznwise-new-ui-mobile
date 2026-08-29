@@ -57,15 +57,6 @@ export default function OrderDetailTrackingScreen() {
     return 0;
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.gold} />
-        <Text style={styles.loadingText}>Loading Order Tracking...</Text>
-      </SafeAreaView>
-    );
-  }
-
   const items = order?.products || order?.items || order?.orderItems || [];
   const currentStep = getActiveStepIndex(order?.status);
 
@@ -121,6 +112,20 @@ export default function OrderDetailTrackingScreen() {
       setBusy(false);
     }
   }, [order]);
+
+  // Every hook above must run on every render. This early return used to sit
+  // before handleCancel/handleReorder/handleInvoice, so the first render (when
+  // `loading` is true) registered three fewer hooks than the next one, and
+  // React threw "Rendered more hooks than during the previous render" — the
+  // crash on opening an order.
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={Colors.gold} />
+        <Text style={styles.loadingText}>Loading order…</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>

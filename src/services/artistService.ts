@@ -113,14 +113,15 @@ function normalizeSlot(s: any): ArtistSlot {
 
 export const ArtistServiceApi = {
   async getServices(params?: {
-    category?: string;
+    /** Category UUID. The API filters on this; a category *name* is ignored. */
+    categoryId?: string;
     page?: number;
     limit?: number;
   }): Promise<Array<Performer & { serviceId: string }>> {
     const q = new URLSearchParams();
     if (params?.page)                                               q.append('page', String(params.page));
     if (params?.limit)                                              q.append('limit', String(params.limit));
-    if (params?.category && params.category !== 'All')              q.append('category', params.category);
+    if (params?.categoryId && params.categoryId !== 'All')          q.append('categoryId', params.categoryId);
 
     const qs = q.toString();
     const res = await fetchApi<ServiceListResponse>(`/artist-services${qs ? `?${qs}` : ''}`, {

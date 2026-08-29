@@ -15,7 +15,7 @@ import { Artwork } from '@/types';
 
 function normalizeArtwork(p: any): Artwork {
   return {
-    id: typeof p.id === 'number' ? p.id : parseInt(p.id ?? '0') || Math.floor(Math.random() * 99999),
+    id: String(p.id ?? ''),
     title: p.title ?? p.name ?? 'Untitled',
     price: p.price ?? 0,
     artist: p.artist?.name ?? p.createdBy?.name ?? p.sellerName ?? p.seller?.name ?? '',

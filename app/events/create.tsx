@@ -1,16 +1,16 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, ActivityIndicator, Alert, Switch,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { EventService } from '@/services/eventService';
-import { useEventCategoryOptions } from '@/hooks/useTaxonomy';
+import { useEventCategoryOptions, useCities } from '@/hooks/useTaxonomy';
 import { useUser } from '@/context/AppContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -33,10 +33,10 @@ const CATEGORY_EMOJI: Record<string, string> = {
   festival: '🎪',
 };
 
-// Sorted so a long list stays scannable — the order the entries happened to
-// be written in gives the user no way to predict where a city sits.
-const CITIES = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Goa', 'Kochi', 'Chandigarh', 'Lucknow', 'Indore', 'Bhopal']
-  .sort((a, b) => a.localeCompare(b));
+// Cities come from `/locations/cities` — 249 of them. The hardcoded list this
+// replaced omitted cities that already have events (Bhubaneswar, Cuttack) and
+// named one the API does not use ("Bangalore" for the API's "Bengaluru"), so a
+// venue in an unlisted city simply could not be entered.
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 //
@@ -215,6 +215,8 @@ interface FormState {
   description: string;
   organiserName: string;
   city: string;
+  /** UUID; the API stores `cityId` and only falls back to the name. */
+  cityId: string;
   venue: string;
   address: string;
   dateFrom: string;
@@ -229,16 +231,27 @@ interface FormState {
 
 const EMPTY: FormState = {
   eventType: '', categoryId: '', title: '', description: '', organiserName: '',
-  city: '', venue: '', address: '',
+  city: '', cityId: '', venue: '', address: '',
   dateFrom: '', dateTo: '', timeFrom: '', timeTo: '',
   isFree: true, ticketPrice: '', capacity: '', bookingDeadline: '',
 };
 
 export default function CreateEvent() {
-  const { user } = useUser();
+  const { activeRole } = useUser();
   const { data: categories = [], isLoading: categoriesLoading } = useEventCategoryOptions();
+  const { data: cities = [] } = useCities();
+  const [citySearch, setCitySearch] = useState('');
+
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormState>(EMPTY);
+  /** Matches first, capped — the full list is far too long to render. */
+  const visibleCities = useMemo(() => {
+    const q = citySearch.trim().toLowerCase();
+    const matches = q ? cities.filter(c => c.name.toLowerCase().includes(q)) : cities;
+    const chosen = cities.filter(c => c.name === form.city);
+    const rest = matches.filter(c => c.name !== form.city);
+    return [...chosen, ...rest].slice(0, 30);
+  }, [cities, citySearch, form.city]);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submissionId, setSubmissionId] = useState('');
@@ -334,6 +347,7 @@ export default function CreateEvent() {
         description: form.description,
         organiserName: form.organiserName,
         city: form.city,
+        cityId: form.cityId || undefined,
         venue: form.venue,
         address: form.address,
         dateFrom: form.dateFrom,
@@ -356,31 +370,13 @@ export default function CreateEvent() {
 
   // ── Role gate ──────────────────────────────────────────────────────────────
   //
-  // `POST /events/create` is `authorize('ARTIST')`. Without this, a buyer
-  // fills in all five steps and only then meets a 403.
+  // The entry points to this screen are hidden unless the session is acting
+  // as an artist, so arriving here without that role means a stale link or a
+  // role switch mid-flow. Send them back rather than offering a form the
+  // server will refuse at the last step.
 
-  if (user.role && user.role !== 'ARTIST') {
-    return (
-      <View style={{ flex: 1, backgroundColor: Colors.bg }}>
-        <SafeAreaView edges={['top']} style={{ backgroundColor: Colors.bg }} />
-        <View style={styles.gate}>
-          <Text style={{ fontSize: 44 }}>🎪</Text>
-          <Text style={styles.gateTitle}>Artists only</Text>
-          <Text style={styles.gateText}>
-            Listing an event needs a verified artist profile. Switch to your artist
-            account, or set one up, to continue.
-          </Text>
-          <GoldButton
-            label="Set up an artist profile"
-            onPress={() => router.replace('/artist/register-artist' as any)}
-            size="lg"
-          />
-          <TouchableOpacity onPress={() => router.back()} style={{ marginTop: Spacing.md }}>
-            <Text style={styles.gateBack}>Go back</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+  if (activeRole && activeRole !== 'ARTIST') {
+    return <Redirect href="/(tabs)/events" />;
   }
 
   // ── Success screen ─────────────────────────────────────────────────────────
@@ -548,17 +544,33 @@ export default function CreateEvent() {
             <Field label="FULL ADDRESS *">
               <TextInput style={[styles.input, styles.inputMulti]} value={form.address} onChangeText={set('address')} placeholder="Street, area, landmark" placeholderTextColor={Colors.creamFaint} multiline />
             </Field>
+            {/* 249 cities cannot be a chip rail you scroll through, so the
+                list is typed down. The chosen city stays pinned first. */}
             <Field label="CITY *">
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: Spacing.sm, paddingVertical: 4 }}>
-                {CITIES.map(c => (
+              <TextInput
+                style={styles.input}
+                value={citySearch}
+                onChangeText={setCitySearch}
+                placeholder={form.city || 'Search for a city'}
+                placeholderTextColor={Colors.creamFaint}
+                autoCorrect={false}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: Spacing.sm, paddingVertical: Spacing.sm }}>
+                {visibleCities.map(c => (
                   <TouchableOpacity
-                    key={c}
-                    style={[styles.cityChip, form.city === c && styles.cityChipActive]}
-                    onPress={() => set('city')(c)}
+                    key={c.id}
+                    style={[styles.cityChip, form.city === c.name && styles.cityChipActive]}
+                    onPress={() => {
+                      setForm(f => ({ ...f, city: c.name, cityId: c.id }));
+                      setCitySearch('');
+                    }}
                   >
-                    <Text style={[styles.cityChipText, form.city === c && { color: Colors.gold }]}>{c}</Text>
+                    <Text style={[styles.cityChipText, form.city === c.name && { color: Colors.gold }]}>{c.name}</Text>
                   </TouchableOpacity>
                 ))}
+                {visibleCities.length === 0 && (
+                  <Text style={styles.cityChipText}>No city matches “{citySearch}”.</Text>
+                )}
               </ScrollView>
             </Field>
           </>

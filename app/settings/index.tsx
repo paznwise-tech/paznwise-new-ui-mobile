@@ -31,7 +31,7 @@ function SettingRow({
 }
 
 export default function Settings() {
-  const { user, logout, switchRole } = useUser();
+  const { user, logout, switchRole, activeRole } = useUser();
   const [switching, setSwitching] = useState(false);
   const [pushEnabled, setPushEnabled]     = useState(true);
   const [emailEnabled, setEmailEnabled]   = useState(true);
@@ -57,7 +57,7 @@ export default function Settings() {
    */
   const handleSwitchRole = useCallback(() => {
     const roles: Array<'BUYER' | 'ARTIST' | 'ORGANIZER'> = ['BUYER', 'ARTIST', 'ORGANIZER'];
-    const current = String(user.role ?? '').toUpperCase();
+    const current = String(activeRole ?? user.role ?? '').toUpperCase();
 
     Alert.alert('Switch role', 'Choose how you want to use Paznwise.', [
       { text: 'Cancel', style: 'cancel' },
@@ -78,7 +78,7 @@ export default function Settings() {
           },
         })),
     ]);
-  }, [user.role, switchRole]);
+  }, [activeRole, user.role, switchRole]);
 
   const handleResetPassword = useCallback(() => {
     if (!user.email) {
@@ -196,7 +196,7 @@ export default function Settings() {
           <SettingRow
             icon="🔄"
             label="Switch Role"
-            sublabel={switching ? 'Switching…' : `Currently ${String(user.role ?? 'Buyer').toLowerCase()}`}
+            sublabel={switching ? 'Switching…' : `Currently ${String(activeRole ?? 'Buyer').toLowerCase()}`}
             onPress={handleSwitchRole}
           />
           <View style={styles.rowDivider} />

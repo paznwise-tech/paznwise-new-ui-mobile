@@ -58,6 +58,15 @@ export function useEventCategories() {
   return ['All', ...(query.data ?? []).map(c => c.name)];
 }
 
+/** All cities the API knows, for venue/location pickers. */
+export function useCities() {
+  return useQuery({
+    queryKey: ['cities'],
+    queryFn: TaxonomyService.getCities,
+    ...LONG_LIVED,
+  });
+}
+
 export function usePerformerCategories() {
   return useQuery({
     queryKey: ['performer-categories'],

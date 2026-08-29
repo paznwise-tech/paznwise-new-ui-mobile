@@ -37,6 +37,11 @@ export interface EventCategory {
   iconName?: string;
 }
 
+export interface ApiCity {
+  id: string;
+  name: string;
+}
+
 export interface PerformerCategory {
   id: string;
   key: string;
@@ -134,6 +139,25 @@ export const TaxonomyService = {
           iconName: c.iconName ?? undefined,
         }))
         .filter((c: EventCategory) => !!c.id && !!c.name);
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Cities — `GET /locations/cities`, public.
+   *
+   * Forms used to carry a hardcoded list of 15, which both omitted cities
+   * that have events (Bhubaneswar, Cuttack) and named one the API does not
+   * use ("Bangalore" where the API says "Bengaluru").
+   */
+  async getCities(): Promise<ApiCity[]> {
+    try {
+      const res = await fetchApi<any>('/locations/cities?limit=500', { requiresAuth: false });
+      return toList(res, 'cities', 'items')
+        .map((c: any) => ({ id: String(c.id ?? ''), name: c.name ?? '' }))
+        .filter((c: ApiCity) => !!c.id && !!c.name)
+        .sort((a: ApiCity, b: ApiCity) => a.name.localeCompare(b.name));
     } catch {
       return [];
     }

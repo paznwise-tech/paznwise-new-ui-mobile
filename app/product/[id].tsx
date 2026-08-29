@@ -105,13 +105,13 @@ export default function ProductDetail() {
     }
   };
 
-  const liked = product ? isFavorite(Number(product.id)) : false;
+  const liked = product ? isFavorite(String(product.id)) : false;
   const inCart = product ? cart.some(c => c.productId === String(product.id)) : false;
 
   const getImageUrl = (url?: string) => resolveImageOrDefault(url);
 
   const handleLikePress = useCallback(() => {
-    if (product) toggleFavorite(Number(product.id));
+    if (product) toggleFavorite(String(product.id));
   }, [product, toggleFavorite]);
 
   // The cart endpoints require a session, so a guest is sent to sign in at

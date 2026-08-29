@@ -52,6 +52,39 @@ export async function getAuthUserId(): Promise<string | null> {
   return cachedId;
 }
 
+/**
+ * The role the server will actually enforce.
+ *
+ * `authorize()` checks `decoded.activeRole || decoded.role` from the access
+ * token, while `/user/profile/me` returns the account's role. Those differ
+ * whenever a user holds a role they have not switched into — an account
+ * registered as ARTIST browsing with an active role of BUYER — so gating the
+ * UI on the profile role showed entry points the server then refused.
+ */
+export function extractActiveRoleFromToken(token: string): string | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const payload = JSON.parse(base64UrlDecode(parts[1]));
+    const role = payload?.activeRole ?? payload?.role ?? null;
+    return role ? String(role).toUpperCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+let cachedRole: string | null = null;
+
+/** Cached active role; cleared on logout and on any token change. */
+export async function getActiveRole(): Promise<string | null> {
+  if (cachedRole) return cachedRole;
+  const token = await AuthStorage.getAccessToken();
+  if (!token) return null;
+  cachedRole = extractActiveRoleFromToken(token);
+  return cachedRole;
+}
+
 export function clearAuthUserIdCache(): void {
   cachedId = null;
+  cachedRole = null;
 }

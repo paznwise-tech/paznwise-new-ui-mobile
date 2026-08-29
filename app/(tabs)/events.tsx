@@ -12,7 +12,7 @@ import { useUser } from '@/context/AppContext';
 const ALL_CITIES = 'All Cities';
 
 export default function Events() {
-  const { user }            = useUser();
+  const { activeRole }      = useUser();
   const [cat, setCat]       = useState('All');
   const [city, setCity]     = useState(ALL_CITIES);
   const CATS = useEventCategories();
@@ -54,9 +54,11 @@ export default function Events() {
             <Text style={styles.sub}>
               {loading ? 'Loading…' : `${events.length} events`}
             </Text>
-            {/* Creating an event is `authorize('ARTIST')` server-side, so the
-                entry point is hidden rather than leading a buyer to a 403. */}
-            {user.role === 'ARTIST' && (
+            {/* Creating an event is `authorize('ARTIST')` server-side, and it
+                checks the token's active role — not the account role — so the
+                button is hidden unless the session is actually acting as an
+                artist. */}
+            {activeRole === 'ARTIST' && (
               <TouchableOpacity style={styles.createBtn} onPress={() => router.push('/events/create' as any)}>
                 <Text style={styles.createBtnText}>+ Create</Text>
               </TouchableOpacity>

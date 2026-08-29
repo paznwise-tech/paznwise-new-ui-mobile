@@ -8,7 +8,7 @@ import { usePerformerCategories } from '@/hooks/useTaxonomy';
 import { Performer } from '@/types';
 import { ArtistServiceApi } from '@/services/artistService';
 
-const ALL_TYPE = { key: 'All', label: 'All', emoji: '✦' };
+const ALL_TYPE = { key: 'All', id: 'All', label: 'All', emoji: '✦' };
 
 // The API has no icon per service category, so one is chosen by name and
 // falls back to a neutral mask rather than leaving the chip bare.
@@ -29,21 +29,22 @@ function emojiFor(label: string): string {
 export default function Hire() {
   const [services, setServices] = useState<Array<Performer & { serviceId: string }>>([]);
   const [loading, setLoading]   = useState(true);
-  const [active, setActive]     = useState(ALL_TYPE.key);
+  const [active, setActive]     = useState(ALL_TYPE.id);
 
   const { data: apiCategories = [] } = usePerformerCategories();
 
   const types = useMemo(
-    () => [ALL_TYPE, ...apiCategories.map(c => ({ key: c.key, label: c.label, emoji: emojiFor(c.label) }))],
+    () => [ALL_TYPE, ...apiCategories.map(c => ({ key: c.key, id: c.id, label: c.label, emoji: emojiFor(c.label) }))],
     [apiCategories],
   );
 
-  // Filtering is done by the API. The previous fuzzy substring match over a
-  // hardcoded type list both missed real categories and matched wrong ones.
+  // Filtering is done by the API, which matches on `categoryId` and silently
+  // ignores anything else — passing the category *name* returned the entire
+  // list for every chip, so selecting one appeared to do nothing.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    ArtistServiceApi.getServices({ limit: 50, category: active })
+    ArtistServiceApi.getServices({ limit: 50, categoryId: active })
       .then(data => { if (!cancelled) setServices(data); })
       .catch(() => { if (!cancelled) setServices([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -60,13 +61,13 @@ export default function Hire() {
     <PerformerCard item={item} onPress={() => handlePerformerPress(item.serviceId)} />
   ), [handlePerformerPress]);
 
-  const renderTypeItem = useCallback(({ item }: { item: { key: string; label: string; emoji: string } }) => (
+  const renderTypeItem = useCallback(({ item }: { item: { key: string; id: string; label: string; emoji: string } }) => (
     <TouchableOpacity
-      style={[styles.typeChip, active === item.key && styles.typeChipActive]}
-      onPress={() => setActive(item.key)}
+      style={[styles.typeChip, active === item.id && styles.typeChipActive]}
+      onPress={() => setActive(item.id)}
     >
       <Text style={styles.typeEmoji}>{item.emoji}</Text>
-      <Text style={[styles.typeLabel, active === item.key && { color: Colors.gold }]}>{item.label}</Text>
+      <Text style={[styles.typeLabel, active === item.id && { color: Colors.gold }]}>{item.label}</Text>
     </TouchableOpacity>
   ), [active]);
 

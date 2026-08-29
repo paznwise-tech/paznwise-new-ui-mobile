@@ -22,7 +22,7 @@ function normalizeOrderItem(i: any): OrderItem {
     title: i.title ?? i.product?.title ?? i.productTitle,
     price: i.price ?? i.unitPrice ?? 0,
     quantity: i.quantity ?? 1,
-    image: i.image ?? i.product?.images?.[0],
+    image: i.image ?? i.productImage ?? i.imageUrl ?? i.product?.productImages?.[0] ?? i.product?.images?.[0],
   };
 }
 
@@ -37,7 +37,10 @@ export function normalizeOrder(o: any): Order {
     ...o,
     id: o.id ?? o._id ?? '',
     status: o.status ?? 'processing',
-    totalAmount: o.totalAmount ?? o.total ?? o.amount,
+    // `grandTotal` is the Order model's field and what the list endpoint
+    // returns; only the detail endpoint renames it. Omitting it here made
+    // every order in the list read ₹0.
+    totalAmount: Number(o.totalAmount ?? o.grandTotal ?? o.total ?? o.amount ?? 0),
     createdAt: o.createdAt ?? new Date().toISOString(),
     items: (o.items ?? o.orderItems ?? o.products ?? []).map(normalizeOrderItem),
     shippingAddress: o.shippingAddress ?? o.deliveryAddress,

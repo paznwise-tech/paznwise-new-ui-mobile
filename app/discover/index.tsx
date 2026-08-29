@@ -37,7 +37,7 @@ const resolveProductImg = (p: any): string => getProductImageUrl(p);
 
 function normalizeArtwork(p: any): Artwork {
   return {
-    id: typeof p.id === 'number' ? p.id : parseInt(p.id ?? '0') || 0,
+    id: String(p.id ?? ''),
     title: p.title ?? 'Untitled',
     price: p.price ?? 0,
     artist: p.artist?.name ?? p.createdBy?.name ?? p.seller?.name ?? '',

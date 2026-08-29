@@ -5,7 +5,7 @@ import { AuthStorage } from '@/services/authStorage';
 import { UserService } from '@/services/userService';
 import { FavoritesService } from '@/services/favoritesService';
 import { connectSocket, disconnectSocket } from '@/services/socket';
-import { clearAuthUserIdCache } from '@/services/currentUser';
+import { clearAuthUserIdCache, getActiveRole } from '@/services/currentUser';
 import { authEvents } from '@/api/authEvents';
 import type { CartLine } from '@/services/cartService';
 import {
@@ -40,9 +40,10 @@ interface CartContextType {
 }
 
 interface FavoritesContextType {
-  favorites: number[];
-  toggleFavorite: (id: number) => void;
-  isFavorite: (id: number) => boolean;
+  /** Product UUIDs. */
+  favorites: string[];
+  toggleFavorite: (id: string) => void;
+  isFavorite: (id: string) => boolean;
 }
 
 /**
@@ -68,6 +69,12 @@ interface UserContextType {
   logout: () => Promise<void>;
   refreshSession: () => void;
   switchRole: (role: 'BUYER' | 'ARTIST' | 'ORGANIZER') => Promise<void>;
+  /**
+   * The role the server enforces, read from the access token's `activeRole`.
+   * Gate role-specific UI on this, never on `user.role` — the profile returns
+   * the account role, which can differ from the session's active one.
+   */
+  activeRole: string | null;
 }
 
 interface FeedContextType {
@@ -120,6 +127,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [status, setStatus] = useState<SessionStatus>('loading');
+  const [activeRole, setActiveRole] = useState<string | null>(null);
+
+  /** Re-reads the active role from the current token. */
+  const syncActiveRole = useCallback(async () => {
+    setActiveRole(await getActiveRole());
+  }, []);
 
   const updateUserProfile = useCallback((profile: Partial<UserProfile>) => {
     setUser(prev => ({ ...prev, ...profile }));
@@ -141,6 +154,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const profile = await UserService.getMyProfile();
       setUser(prev => ({ ...prev, ...profile, isLoggedIn: true }));
       setStatus('signedIn');
+      // The token carries the role the server enforces; keep it in step.
+      await syncActiveRole();
       connectSocket().catch(() => {}); // open real-time connection once authenticated
       // Sync saved artworks from the backend
       FavoritesService.getFavorites()
@@ -150,7 +165,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('[AppContext] loadProfile failed:', e);
       throw e;
     }
-  }, []);
+  }, [syncActiveRole]);
 
   /**
    * Boot: a stored token is only a claim, so it is validated against the
@@ -189,6 +204,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authEvents.on('signed-out', () => {
         disconnectSocket();
         setUser(prev => ({ ...prev, isLoggedIn: false }));
+        setActiveRole(null);
         setStatus('signedOut');
       }),
     [],
@@ -289,9 +305,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const cartCount = useMemo(() => calcCartCount(cart), [cart]);
 
   // ── Favorites state ─────────────────────────────────────
-  const [favorites, setFavorites] = useState<number[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
 
-  const toggleFavorite = useCallback((id: number) => {
+  const toggleFavorite = useCallback((id: string) => {
     setFavorites(prev => {
       if (prev.includes(id)) {
         FavoritesService.removeFavorite(id).catch(() => {
@@ -307,7 +323,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
-  const isFavorite = useCallback((id: number) => {
+  const isFavorite = useCallback((id: string) => {
     return favorites.includes(id);
   }, [favorites]);
 
@@ -455,7 +471,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [cart, addToCart, updateQuantity, removeFromCart, clearCart, refreshCart, cartTotal, cartCount, cartLoading],
   );
   const favoritesValue = useMemo(() => ({ favorites, toggleFavorite, isFavorite }), [favorites, toggleFavorite, isFavorite]);
-  const userValue = useMemo(() => ({ user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole }), [user, status, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole]);
+  const userValue = useMemo(() => ({ user, status, activeRole, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole }), [user, status, activeRole, updateUserProfile, deleteProfile, followUser, unfollowUser, login, loginWithProfile, loadProfile, logout, refreshSession, switchRole]);
   const feedValue = useMemo(() => ({
     feedPosts, trendingPosts, followingPosts, feedLoading, feedError,
     fetchPersonalisedFeed, fetchTrendingFeed, fetchFollowingFeed,

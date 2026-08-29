@@ -31,6 +31,49 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+/**
+ * Where a notification should take you.
+ *
+ * The API emits screaming-snake types — ORDER, BOOKING_REQUEST,
+ * SERVICE_APPROVED, EVENT_APPROVED and about thirty more. This used to test
+ * for 'order', 'booking', 'event' and 'follow' in lower case, so no branch
+ * ever matched and tapping any notification did nothing at all.
+ *
+ * Anything unrecognised still opens something sensible rather than silently
+ * doing nothing.
+ */
+function notificationTarget(n: AppNotification): string {
+  const t = String(n.type ?? '').toUpperCase();
+  const d = n.data ?? {};
+
+  if (t.startsWith('ORDER')) return d.orderId ? `/orders/${d.orderId}` : '/orders';
+
+  if (t.startsWith('RENTAL')) return '/rentals';
+
+  if (t.startsWith('SERVICE') || t.startsWith('BOOKING')) {
+    // A request comes to the artist; the outcome goes to the buyer.
+    if (t === 'BOOKING_REQUEST' || t === 'SERVICE_BOOKINGS') return '/artist/bookings';
+    return '/booking/my-bookings';
+  }
+
+  if (t === 'TICKET_CONFIRMED' || t === 'EVENT_TICKETS' || t === 'EVENT_BOOKING_CANCELLED') {
+    return '/event-bookings';
+  }
+
+  if (t.startsWith('EVENT') || t === 'ARTIST_EVENT' || t === 'ORGANIZER_EVENT') {
+    return d.eventId ? `/events/${d.eventId}` : '/(tabs)/events';
+  }
+
+  if (t.startsWith('REVIEW')) return '/reviews';
+
+  if (t.startsWith('POST') || ['LIKE', 'COMMENT', 'REPLY', 'SHARE', 'COMMENT_UPDATE'].includes(t)) {
+    return d.postId ? `/feed/${d.postId}` : '/feed/my-posts';
+  }
+
+  if (d.userId) return `/artist/${d.userId}`;
+  return '/notifications';
+}
+
 export default function Notifications() {
   const [notifs, setNotifs]       = useState<AppNotification[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -60,10 +103,7 @@ export default function Notifications() {
   const handlePress = useCallback((n: AppNotification) => {
     NotificationService.markAsRead(n.id).catch(() => {});
     setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, isRead: true } : x));
-    if (n.type === 'order')   router.push('/orders' as any);
-    else if (n.type === 'booking') router.push('/booking/my-bookings' as any);
-    else if (n.type === 'event' && n.data?.eventId) router.push(`/events/${n.data.eventId}` as any);
-    else if (n.type === 'follow' && n.data?.userId) router.push(`/artist/${n.data.userId}` as any);
+    router.push(notificationTarget(n) as any);
   }, []);
 
   const unreadCount = notifs.filter(n => !n.isRead).length;

@@ -23,6 +23,36 @@ const { width } = Dimensions.get('window');
 /** The "no filter" sentinel for the Buzz rail's category chips. */
 const ALL = 'All';
 
+/**
+ * Hero slide CTAs are authored in the admin panel against the *web* app's
+ * routes, so they cannot be pushed as given — "/book" is a real page on the
+ * web and a "page could not be found" here. Known web paths are mapped to
+ * their mobile equivalents, and anything unrecognised falls back to browse
+ * rather than a dead end.
+ */
+const HERO_ROUTES: Record<string, string> = {
+  '/book': '/(tabs)/hire',
+  '/hire': '/(tabs)/hire',
+  '/artists': '/(tabs)/hire',
+  '/events': '/(tabs)/events',
+  '/shop': '/(tabs)/browse',
+  '/marketplace': '/(tabs)/browse',
+  '/products': '/(tabs)/browse',
+  '/feed': '/feed',
+  '/search': '/search',
+  '/discover': '/discover',
+};
+
+function heroTarget(ctaLink?: string): string {
+  if (!ctaLink) return '/(tabs)/browse';
+  const path = ctaLink.split('?')[0].replace(/\/$/, '').toLowerCase();
+  if (HERO_ROUTES[path]) return HERO_ROUTES[path];
+  // A category deep link is the one dynamic shape worth honouring.
+  const cat = /^\/(?:category|categories)\/([\w-]+)$/.exec(path);
+  if (cat) return `/product/category/${cat[1]}`;
+  return '/(tabs)/browse';
+}
+
 function HeroSlider() {
   const [active, setActive] = useState(0);
   const { data: slides = [], isLoading } = useHeroSlides();
@@ -35,15 +65,9 @@ function HeroSlider() {
         <Text style={styles.heroEyebrow}>{item.eyebrow ?? 'Featured Collection'}</Text>
         <Text style={styles.heroTitle}>{item.title}</Text>
         <Text style={styles.heroCaption}>{item.caption}</Text>
-        {/* ctaLink is an absolute app path configured in the admin panel,
-            not a category slug, so it is pushed as given. */}
         <TouchableOpacity
           style={styles.heroBtn}
-          onPress={() =>
-            item.ctaLink?.startsWith('/')
-              ? router.push(item.ctaLink as any)
-              : router.push('/(tabs)/browse')
-          }
+          onPress={() => router.push(heroTarget(item.ctaLink) as any)}
         >
           <Text style={styles.heroBtnText}>{item.ctaLabel ?? 'Explore'} →</Text>
         </TouchableOpacity>

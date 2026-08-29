@@ -110,7 +110,7 @@ export function formatEventDate(eventDate?: string, eventEndDate?: string): stri
 
 function normalizeEvent(e: ApiEvent, idx: number): Event {
   return {
-    id: parseInt(e.id) || idx + 1,
+    id: String(e.id ?? idx),
     title: e.title,
     date: formatEventDate(e.eventDate, e.eventEndDate),
     city: getCityName(e.city),
@@ -339,6 +339,8 @@ export const EventService = {
     /** UUID from `/event-categories`; the API validates this, not the name. */
     categoryId: string;
     city: string;
+    /** City UUID; the API prefers this over the free-text name. */
+    cityId?: string;
     venue: string;
     address: string;
     dateFrom: string;
@@ -360,6 +362,7 @@ export const EventService = {
         venueName: data.venue,
         venueAddress: data.address,
         city: data.city,
+        cityId: data.cityId,
         eventDate: data.dateFrom,
         eventEndDate: data.dateTo,
         startTime: data.timeFrom,

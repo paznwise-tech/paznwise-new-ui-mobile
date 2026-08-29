@@ -1,7 +1,9 @@
 // Global TypeScript definitions for Paznwise Mobile
 
 export interface Artwork {
-  id: number;
+  /** UUID. Was `number`, which forced parseInt on a UUID and yielded a
+   *  truncated id that 404s — "64b8b682-..." became 64. */
+  id: string;
   title: string;
   price: number;
   artist: string;
@@ -25,7 +27,8 @@ export interface Performer {
 }
 
 export interface Event {
-  id: number;
+  /** UUID, for the same reason as `Artwork.id`. */
+  id: string;
   title: string;
   date: string;
   city: string;
