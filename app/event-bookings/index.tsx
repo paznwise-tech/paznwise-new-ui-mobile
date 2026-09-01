@@ -64,7 +64,7 @@ export default function MyEventTickets() {
 
   const renderItem = useCallback(({ item }: { item: ApiEventTicket }) => {
     const evt = item.event;
-    const imgUri = resolveEventImage(evt?.bannerImage);
+    const imgUri = resolveEventImage(evt?.bannerImage, evt?.id);
     const cityName = getCityName(evt?.city);
     const dateStr = formatEventDate(evt?.eventDate);
     const status = (item.status ?? 'confirmed').toLowerCase();

@@ -7,6 +7,8 @@ import { router, Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { EventService } from '@/services/eventService';
@@ -86,6 +88,41 @@ const showTime = (s: string) => {
   const suffix = h < 12 ? 'AM' : 'PM';
   return `${h % 12 === 0 ? 12 : h % 12}:${m[2]} ${suffix}`;
 };
+
+/**
+ * One bookable slot per day of the event, from the opening and closing times.
+ *
+ * A multi-day exhibition open 10:00–18:00 becomes one slot per day rather
+ * than a single slot spanning the whole run, which is what someone booking a
+ * day expects to choose between.
+ */
+function buildSlots(form: FormState): Array<{ startTime: string; endTime: string; totalSeats: number }> {
+  const from = fromYMD(form.dateFrom);
+  if (!from) return [];
+  const to = fromYMD(form.dateTo) ?? from;
+
+  // Default to a sensible window when the optional times were left blank.
+  const [sh, sm] = (form.timeFrom || '10:00').split(':').map(Number);
+  const [eh, em] = (form.timeTo || '18:00').split(':').map(Number);
+
+  const seats = Math.max(1, parseInt(form.capacity, 10) || 100);
+  const slots: Array<{ startTime: string; endTime: string; totalSeats: number }> = [];
+
+  for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    const start = new Date(d); start.setHours(sh, sm, 0, 0);
+    const end = new Date(d); end.setHours(eh, em, 0, 0);
+    // The API requires endTime > startTime; an overnight window rolls over.
+    if (end <= start) end.setDate(end.getDate() + 1);
+    slots.push({
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      totalSeats: seats,
+    });
+    // Guard against a runaway range producing hundreds of slots.
+    if (slots.length >= 60) break;
+  }
+  return slots;
+}
 
 type PickField = 'dateFrom' | 'dateTo' | 'timeFrom' | 'timeTo' | 'bookingDeadline';
 
@@ -257,6 +294,24 @@ export default function CreateEvent() {
   const [submissionId, setSubmissionId] = useState('');
 
   const [picking, setPicking] = useState<PickField | null>(null);
+  const [coverUri, setCoverUri] = useState<string | null>(null);
+  const [coverMime, setCoverMime] = useState('image/jpeg');
+
+  /** The cover becomes the event's banner; without one every card falls back. */
+  const pickCover = useCallback(async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('Permission needed', 'Allow photo access to choose a cover image.');
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], allowsEditing: true, aspect: [16, 9], quality: 0.8,
+    });
+    if (!res.canceled && res.assets[0]) {
+      setCoverUri(res.assets[0].uri);
+      setCoverMime(res.assets[0].mimeType ?? 'image/jpeg');
+    }
+  }, []);
 
   const set = useCallback(<K extends keyof FormState>(k: K) => (v: FormState[K]) => {
     setForm(f => ({ ...f, [k]: v }));
@@ -358,7 +413,28 @@ export default function CreateEvent() {
         ticketPrice: form.isFree ? undefined : parseFloat(form.ticketPrice),
         capacity: form.capacity ? parseInt(form.capacity) : undefined,
         bookingDeadline: form.bookingDeadline,
+        coverUri: coverUri ?? undefined,
+        coverMimeType: coverMime,
       });
+      // An event with no slot cannot be booked — the booking screen has
+      // nothing to select and says "No time slots available for this event
+      // yet". `POST /events/create` does not create one, so the opening and
+      // closing times collected above become a slot per event day.
+      if (result.id) {
+        try {
+          await EventService.addSlots(result.id, buildSlots(form));
+        } catch (slotErr: any) {
+          // The event exists and is already awaiting review; losing the slots
+          // is recoverable by editing, so it must not read as a failed
+          // submission.
+          console.warn('[CreateEvent] slots failed:', slotErr?.message);
+          Alert.alert(
+            'Event submitted, times not saved',
+            'Your event was created, but its time slots could not be saved. Add them from My Events so people can book.',
+          );
+        }
+      }
+
       setSubmissionId(result.submissionId ?? `EVT-2025-${Math.floor(1000 + Math.random() * 9000)}`);
       setSubmitted(true);
     } catch (e: any) {
@@ -366,7 +442,7 @@ export default function CreateEvent() {
     } finally {
       setLoading(false);
     }
-  }, [form]);
+  }, [form, coverUri, coverMime]);
 
   // ── Role gate ──────────────────────────────────────────────────────────────
   //
@@ -474,6 +550,25 @@ export default function CreateEvent() {
         {/* Step 1 — Details */}
         {step === 1 && (
           <>
+            <Field label="COVER PHOTO">
+              <TouchableOpacity style={styles.coverPick} onPress={pickCover} activeOpacity={0.85}>
+                {coverUri ? (
+                  <Image source={{ uri: coverUri }} style={styles.coverImg} contentFit="cover" />
+                ) : (
+                  <View style={styles.coverEmpty}>
+                    <Text style={{ fontSize: 26 }}>🖼</Text>
+                    <Text style={styles.coverHint}>Add a cover photo</Text>
+                    <Text style={styles.coverSub}>Shown on the event card and ticket</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              {!!coverUri && (
+                <TouchableOpacity onPress={pickCover} style={{ paddingTop: Spacing.xs }}>
+                  <Text style={styles.coverChange}>Change photo</Text>
+                </TouchableOpacity>
+              )}
+            </Field>
+
             <Field label="EVENT TITLE *">
               <TextInput style={styles.input} value={form.title} onChangeText={set('title')} placeholder="e.g. Mumbai Art Week 2025" placeholderTextColor={Colors.creamFaint} />
             </Field>
@@ -709,6 +804,15 @@ const styles = StyleSheet.create({
   charCount: { ...Typography.caption, fontSize: 11, color: Colors.creamFaint, textAlign: 'right', marginTop: 2 },
   row2: { flexDirection: 'row', gap: Spacing.sm },
   // Date/time picker fields — sized to match a single-line TextInput.
+  coverPick: {
+    height: 150, borderRadius: Radius.md, overflow: 'hidden',
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgInput,
+  },
+  coverImg: { width: '100%', height: '100%' },
+  coverEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  coverHint: { ...Typography.bodySemibold, fontSize: 14, color: Colors.cream },
+  coverSub: { ...Typography.caption, fontSize: 11, color: Colors.creamDim },
+  coverChange: { ...Typography.bodySemibold, fontSize: 13, color: Colors.gold },
   typeEmpty: { ...Typography.body, fontSize: 14, color: Colors.creamDim, textAlign: 'center', marginTop: Spacing.xl },
   gate: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: Spacing.xl, gap: Spacing.sm },
   gateTitle: { ...Typography.heading, fontSize: 20, marginTop: Spacing.sm },

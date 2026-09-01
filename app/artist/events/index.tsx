@@ -69,7 +69,7 @@ export default function ArtistEvents() {
           onPress={() => router.push(`/artist/events/${item.id}` as any)}
         >
           <Image
-            source={{ uri: resolveEventImage(item.bannerImage ?? item.eventImages?.[0]) }}
+            source={{ uri: resolveEventImage(item.bannerImage ?? item.eventImages?.[0], item.id) }}
             style={styles.thumb}
             contentFit="cover"
           />

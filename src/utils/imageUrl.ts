@@ -150,3 +150,32 @@ export function getAvatarUrl(picture?: unknown, name?: string | null): string {
   const label = (name ?? '').trim() || 'User';
   return `https://ui-avatars.com/api/?name=${encodeURIComponent(label)}&background=random`;
 }
+
+// ─── Deterministic stand-ins ─────────────────────────────────────────────────
+//
+// Ported from the web app's `getPostFallbackImage`. A single shared fallback
+// made every event card in a list look like the same event; seeding the
+// choice by id keeps each one distinct and stable across renders.
+
+const EVENT_FALLBACKS = [
+  'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&h=400&fit=crop',
+  'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=600&h=400&fit=crop',
+  'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=600&h=400&fit=crop',
+  'https://images.unsplash.com/photo-1540039155733-5bb30b53aa14?w=600&h=400&fit=crop',
+  'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=600&h=400&fit=crop',
+  'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?w=600&h=400&fit=crop',
+  'https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?w=600&h=400&fit=crop',
+  'https://images.unsplash.com/photo-1511578314322-379afb476865?w=600&h=400&fit=crop',
+];
+
+/** Stable pseudo-random pick, so the same event always gets the same image. */
+export function pickFallback(pool: string[], seed: string | number): string {
+  const key = String(seed ?? '');
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return pool[hash % pool.length];
+}
+
+export function getEventFallbackImage(seed: string | number): string {
+  return pickFallback(EVENT_FALLBACKS, seed);
+}

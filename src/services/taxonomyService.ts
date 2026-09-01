@@ -15,6 +15,8 @@ export interface Category {
   label: string;
   slug: string;
   color: string;
+  /** Category artwork from the admin panel; absent on the "All" pseudo-entry. */
+  img?: string;
 }
 
 export interface HeroSlide {
@@ -85,6 +87,8 @@ export const TaxonomyService = {
         label,
         slug: c.slug ?? label.toLowerCase().replace(/\s+/g, '-'),
         color: colorFor(label),
+        // The API has always sent this; the chips just never showed it.
+        img: resolveImageUrl(c.thumbnailUrl ?? c.image ?? c.imageUrl ?? c.icon) || undefined,
       };
     });
   },

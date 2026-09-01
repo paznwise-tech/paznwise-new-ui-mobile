@@ -9,6 +9,7 @@ import { useCallback, useMemo, useEffect, useState } from 'react';
 import { MessageService } from '@/services/messageService';
 import { FullPhotoModal } from '@/components/ui/FullPhotoModal';
 import { NotificationBell } from '@/components/ui/NotificationBell';
+import { useMySubscription } from '@/hooks/useSubscription';
 
 interface MenuItem {
   icon: string;
@@ -105,6 +106,10 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
 
 export default function Profile() {
   const { user, logout, loadProfile, activeRole } = useUser();
+  // The plan drives what the account can do, so it belongs on the profile
+  // rather than only behind Plan & Billing.
+  const { data: mySubscription } = useMySubscription(user.isLoggedIn);
+  const planName = mySubscription?.subscription?.planName;
   const [photoVisible, setPhotoVisible] = useState(false);
   const [totalUnread, setTotalUnread] = useState(0);
 
@@ -214,6 +219,11 @@ export default function Profile() {
           <FullPhotoModal uri={user.avatar} visible={photoVisible} onClose={() => setPhotoVisible(false)} />
           <Text style={styles.name}>{user.name} {user.isVerified && <Text style={{ color: Colors.gold }}>✓</Text>}</Text>
           <Text style={styles.email}>{user.username} · {roleText}</Text>
+          {!!planName && (
+            <TouchableOpacity style={styles.planPill} onPress={() => router.push('/subscription' as any)}>
+              <Text style={styles.planPillText}>✦ {planName}</Text>
+            </TouchableOpacity>
+          )}
           <Text style={styles.bio}>{user.bio}</Text>
           {/* Returned by the profile endpoint but never rendered before. */}
           {!!user.location && <Text style={styles.location}>📍 {user.location}</Text>}
@@ -318,6 +328,13 @@ const styles = StyleSheet.create({
   name: { ...Typography.heading, fontSize: 22, marginBottom: 4 },
   email: { ...Typography.caption, fontSize: 13, marginBottom: Spacing.sm },
   location: { ...Typography.caption, fontSize: 13, color: Colors.creamDim, marginTop: 2 },
+  planPill: {
+    marginTop: Spacing.xs, alignSelf: 'center',
+    paddingHorizontal: Spacing.md, paddingVertical: 4,
+    borderRadius: Radius.full, borderWidth: 1,
+    borderColor: Colors.borderGold, backgroundColor: Colors.gold + '18',
+  },
+  planPillText: { ...Typography.label, fontSize: 10, color: Colors.gold, letterSpacing: 0.8 },
   bio: { ...Typography.caption, fontSize: 13, textAlign: 'center', marginHorizontal: Spacing.xl, marginBottom: Spacing.md, color: Colors.creamDim, lineHeight: 20 },
   actionRow: { flexDirection: 'row', gap: Spacing.md, marginBottom: Spacing.xl },
   editBtn: { backgroundColor: Colors.bgCard, paddingHorizontal: Spacing.lg, paddingVertical: 8, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border },

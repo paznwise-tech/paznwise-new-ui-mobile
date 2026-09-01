@@ -119,6 +119,8 @@ function CategoryBar() {
 
   // These chips used to only restyle themselves. They now navigate, which is
   // the only reason a category filter exists on a home screen.
+  // The chips carry the category artwork the admin panel already stores —
+  // a row of bare text pills read as unfinished next to the rest of the page.
   const renderCatItem = useCallback(({ item }: { item: Category }) => (
     <TouchableOpacity
       onPress={() =>
@@ -126,9 +128,20 @@ function CategoryBar() {
           ? router.push(`/product/category/${item.slug}` as any)
           : router.push('/(tabs)/browse')
       }
-      style={[styles.catChip, { borderColor: item.color + '66' }]}
+      style={styles.catTile}
+      activeOpacity={0.85}
     >
-      <Text style={[styles.catText, { color: item.color }]}>{item.label}</Text>
+      {item.img ? (
+        <Image source={{ uri: item.img }} style={styles.catImg} contentFit="cover" transition={200} />
+      ) : (
+        <View style={[styles.catImg, { backgroundColor: item.color + '22' }]} />
+      )}
+      <LinearGradient
+        colors={['transparent', 'rgba(13,27,42,0.35)', 'rgba(13,27,42,0.92)']}
+        locations={[0, 0.45, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <Text style={styles.catTileText} numberOfLines={2}>{item.label}</Text>
     </TouchableOpacity>
   ), []);
 
@@ -510,6 +523,16 @@ const styles = StyleSheet.create({
   buzzEmpty: {
     ...Typography.caption, fontSize: 13, color: Colors.creamDim,
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.lg,
+  },
+  catTile: {
+    width: 112, height: 76, borderRadius: Radius.md, overflow: 'hidden',
+    marginRight: Spacing.sm, justifyContent: 'flex-end',
+    borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard,
+  },
+  catImg: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  catTileText: {
+    ...Typography.bodySemibold, fontSize: 12, color: Colors.cream,
+    paddingHorizontal: Spacing.sm, paddingBottom: Spacing.sm,
   },
   catList: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, gap: Spacing.sm },
   catChip: { paddingHorizontal: Spacing.md, paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border, backgroundColor: Colors.bgCard },

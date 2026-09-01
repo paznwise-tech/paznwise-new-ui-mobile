@@ -1,4 +1,5 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi } from './api';
+import { resolveImageUrl, getEventFallbackImage } from '@/utils/imageUrl';
 import { Event } from '@/types';
 
 interface ApiEventCity {
@@ -82,10 +83,13 @@ export interface ApiEventTicket {
   createdAt?: string;
 }
 
-export function resolveEventImage(url: string | null | undefined): string {
-  if (!url) return 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600&h=400&fit=crop';
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+/**
+ * @param seed Event id. Most events carry no banner — the create flow only
+ *   started collecting one recently — and a single shared fallback made every
+ *   card in a list look like the same event.
+ */
+export function resolveEventImage(url: string | null | undefined, seed?: string | number): string {
+  return resolveImageUrl(url) || getEventFallbackImage(seed ?? '');
 }
 
 export function getCityName(city: ApiEventCity | string | undefined): string {
@@ -115,7 +119,7 @@ function normalizeEvent(e: ApiEvent, idx: number): Event {
     date: formatEventDate(e.eventDate, e.eventEndDate),
     city: getCityName(e.city),
     category: e.category ?? 'Exhibition',
-    img: resolveEventImage(e.bannerImage ?? e.eventImages?.[0]),
+    img: resolveEventImage(e.bannerImage ?? e.eventImages?.[0], e.id),
     // Price arrives as a decimal string, so it is coerced — `Event.price` is
     // typed number and screens compare it against 0 to show "Free".
     price: e.isFree ? 0 : Number(e.price ?? 0),
@@ -331,6 +335,25 @@ export const EventService = {
   },
 
   /** `POST /events/create` (ARTIST role) — plain `POST /events` is not a route. */
+  /**
+   * Adds bookable time slots to an event.
+   *
+   * `POST /events/create` does not create any, and an event with no slot
+   * cannot be booked at all — the booking screen has nothing to select and
+   * shows "No time slots available for this event yet". Creating an event
+   * from the app therefore has to follow up with this.
+   */
+  async addSlots(
+    eventId: string,
+    slots: Array<{ startTime: string; endTime: string; totalSeats: number; seatPrefix?: string }>,
+  ): Promise<void> {
+    await fetchApi(`/events/${eventId}/slots`, {
+      method: 'POST',
+      requiresAuth: true,
+      body: JSON.stringify(slots),
+    });
+  },
+
   async createEvent(data: {
     eventType: string;
     title: string;
@@ -351,11 +374,11 @@ export const EventService = {
     ticketPrice?: number;
     capacity?: number;
     bookingDeadline?: string;
+    /** Local URI of the cover photo. Becomes the event's banner image. */
+    coverUri?: string;
+    coverMimeType?: string;
   }): Promise<{ id?: string; submissionId?: string }> {
-    const res = await fetchApi<any>('/events/create', {
-      method: 'POST',
-      requiresAuth: true,
-      body: JSON.stringify({
+    const fields: Record<string, unknown> = {
         title: data.title,
         description: data.description,
         categoryId: data.categoryId,
@@ -372,7 +395,32 @@ export const EventService = {
         capacity: data.capacity,
         bookingDeadline: data.bookingDeadline,
         organiserName: data.organiserName,
-      }),
+    };
+
+    // The route runs `eventUpload.any()`, and the first file uploaded becomes
+    // `bannerImage`. Without one an event has no cover at all, which is why
+    // every event card fell back to the same stock photo.
+    let body: BodyInit;
+    if (data.coverUri) {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(fields)) {
+        if (v !== undefined && v !== null && v !== '') form.append(k, String(v));
+      }
+      const filename = data.coverUri.split('/').pop() ?? 'cover.jpg';
+      form.append('images', {
+        uri: data.coverUri,
+        type: data.coverMimeType ?? 'image/jpeg',
+        name: filename,
+      } as any);
+      body = form as unknown as BodyInit;
+    } else {
+      body = JSON.stringify(fields);
+    }
+
+    const res = await fetchApi<any>('/events/create', {
+      method: 'POST',
+      requiresAuth: true,
+      body,
     });
     const d = res?.data ?? res?.event ?? res;
     return { id: d?.id, submissionId: d?.submissionId ?? d?.id };
