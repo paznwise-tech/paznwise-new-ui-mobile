@@ -36,10 +36,14 @@ const HERO_ROUTES: Record<string, string> = {
   '/artists': '/(tabs)/hire',
   '/events': '/(tabs)/events',
   '/shop': '/(tabs)/browse',
+  // "/search" is a product listing on the web. Mobile's /search is
+  // query-driven and opens on an empty state, which reads as a blank page —
+  // "Shop art" belongs on the catalogue.
+  '/shop-art': '/(tabs)/browse',
   '/marketplace': '/(tabs)/browse',
   '/products': '/(tabs)/browse',
   '/feed': '/feed',
-  '/search': '/search',
+  '/search': '/(tabs)/browse',
   '/discover': '/discover',
 };
 

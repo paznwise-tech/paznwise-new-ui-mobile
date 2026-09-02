@@ -8,7 +8,7 @@ import { GoldButton } from '@/components/ui/GoldButton';
 import { SeatMap } from '@/components/events/SeatMap';
 import {
   EventService, ApiEventDetail, ApiTicketTier, formatEventDate,
-  type EventSeat, type EventBookingResult,
+  type EventSeat, type EventBookingResult, tierLabel, seatTierName,
 } from '@/services/eventService';
 import { useRazorpayPayment } from '@/payments/useRazorpayPayment';
 import { toPaise } from '@/payments/razorpay';
@@ -63,13 +63,35 @@ export default function BookEventTicket() {
     loadSeats(slotId);
   }, [slotId, loadSeats]);
 
+  // The slot's tiers, not the event's: the API adds a "Normal" tier at the
+  // event's base price for any capacity the named tiers do not cover, and it
+  // exists only on the enriched slot. Reading the event's tiers hid it, so
+  // normal entry could neither be seen nor chosen.
+  const activeSlot = slots.find(sl => String(sl.id) === String(slotId));
+  const tiers: ApiTicketTier[] = activeSlot?.ticketTiers ?? event?.ticketTiers ?? [];
+
   const seatMapped = seats.length > 0;
   const effectiveQuantity = seatMapped ? selectedSeatIds.length : quantity;
 
-  const total = useMemo(
-    () => (selectedTier ? Number(selectedTier.price) * effectiveQuantity : 0),
-    [selectedTier, effectiveQuantity],
-  );
+  /**
+   * Priced the way the server prices it: each seat by its own tier, taken
+   * from its seat number. Multiplying the selected tier's rate by the seat
+   * count overstated the total whenever tiers were mixed — two seats showed
+   * ₹5,000 when the server charged ₹4,500.
+   */
+  const total = useMemo(() => {
+    if (!seatMapped) return selectedTier ? Number(selectedTier.price) * quantity : 0;
+    const priceFor = (name: string) => {
+      const t = tiers.find(
+        (x: ApiTicketTier) => (x.tierName ?? x.name ?? '').toLowerCase() === name.toLowerCase(),
+      );
+      return Number(t?.price ?? selectedTier?.price ?? 0);
+    };
+    return selectedSeatIds.reduce((sum, id) => {
+      const seat = seats.find(s => s.id === id);
+      return sum + (seat ? priceFor(seatTierName(seat.seatNumber)) : 0);
+    }, 0);
+  }, [seatMapped, selectedTier, quantity, selectedSeatIds, seats, tiers]);
 
   const toggleSeat = useCallback((seatId: string) => {
     setSelectedSeatIds(prev =>
@@ -179,7 +201,7 @@ export default function BookEventTicket() {
     );
   }
 
-  const tiers = event.ticketTiers ?? [];
+
 
   /**
    * Why booking is closed, or null while it is open.
@@ -251,7 +273,7 @@ export default function BookEventTicket() {
                       {isSelected && <View style={styles.radioInner} />}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.tierName}>{tier.name}</Text>
+                      <Text style={styles.tierName}>{tierLabel(tier)}</Text>
                       {tier.description ? <Text style={styles.tierDesc}>{tier.description}</Text> : null}
                       {tier.available !== undefined && tier.available <= 10 && (
                         <Text style={styles.tierAvail}>Only {tier.available} left!</Text>
@@ -345,7 +367,7 @@ export default function BookEventTicket() {
               <Text style={styles.summaryTitle}>Order Summary</Text>
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryKey}>
-                  {selectedTier?.name ?? 'General Admission'} × {effectiveQuantity}
+                  {selectedTier ? tierLabel(selectedTier) : 'General admission'} × {effectiveQuantity}
                 </Text>
                 <Text style={styles.summaryVal}>
                   {total === 0 ? 'Free' : `₹${total.toLocaleString('en-IN')}`}

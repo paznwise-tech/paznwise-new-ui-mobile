@@ -35,13 +35,19 @@ function normalizeOrderItem(i: any): OrderItem {
 export function normalizeOrder(o: any): Order {
   return {
     ...o,
-    id: o.id ?? o._id ?? '',
-    status: o.status ?? 'processing',
+    // The detail endpoint returns `orderId`, the list returns `id`. Reading
+    // only `id` left the detail screen with an empty string, so every action
+    // built a URL with no id — "Track shipment" pushed /order-tracking/ and
+    // hit the unmatched route, reorder posted to /orders//reorder, and the
+    // invoice and cancel calls 404'd.
+    id: o.id ?? o.orderId ?? o._id ?? '',
+    /** Detail calls it `shippingStatus`; the list calls it `status`. */
+    status: o.status ?? o.shippingStatus ?? 'PROCESSING',
     // `grandTotal` is the Order model's field and what the list endpoint
     // returns; only the detail endpoint renames it. Omitting it here made
     // every order in the list read ₹0.
     totalAmount: Number(o.totalAmount ?? o.grandTotal ?? o.total ?? o.amount ?? 0),
-    createdAt: o.createdAt ?? new Date().toISOString(),
+    createdAt: o.createdAt ?? o.orderDate ?? new Date().toISOString(),
     items: (o.items ?? o.orderItems ?? o.products ?? []).map(normalizeOrderItem),
     shippingAddress: o.shippingAddress ?? o.deliveryAddress,
   };

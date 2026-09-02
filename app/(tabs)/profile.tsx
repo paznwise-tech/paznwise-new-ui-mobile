@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +15,7 @@ interface MenuItem {
   icon: string;
   label: string;
   sub: string;
+  /** A route to push, or 'switch:ROLE' to change the session's active role. */
   route: string;
 }
 
@@ -28,7 +29,14 @@ interface MenuSection {
  * a screen missing from here is effectively unreachable, since there is no
  * other navigation surface outside the five tabs.
  */
-function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer: boolean }): MenuSection[] {
+function buildMenu(opts: {
+  isArtist: boolean;
+  isPerformer: boolean;
+  isOrganizer: boolean;
+  /** The account holds these roles even if the session is not using them. */
+  canBeArtist: boolean;
+  canBeOrganizer: boolean;
+}): MenuSection[] {
   const shopping: MenuItem[] = [
     { icon: '📦', label: 'My Orders',      sub: 'Track your artwork purchases',   route: '/orders' },
     { icon: '🎟', label: 'Event Tickets',  sub: 'Your booked events',             route: '/event-bookings' },
@@ -88,8 +96,17 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
   if (sells) {
     sections.push({ title: 'Selling', items: selling });
     sections.push({ title: 'Artist', items: artist });
+  } else if (opts.canBeArtist) {
+    // The account is already an artist; the session is just acting as a
+    // buyer. Offering "Become an artist" here sent people to register a
+    // profile they already had, with no way to reach their own tools.
+    sections.push({
+      title: 'Artist',
+      items: [
+        { icon: '🎭', label: 'Switch to artist', sub: 'Create events, services and listings', route: 'switch:ARTIST' },
+      ],
+    });
   } else {
-    // Not an artist yet: one route in, and nothing that would 403.
     sections.push({
       title: 'Sell on Paznwise',
       items: [
@@ -98,14 +115,23 @@ function buildMenu(opts: { isArtist: boolean; isPerformer: boolean; isOrganizer:
     });
   }
 
-  if (opts.isOrganizer) sections.push({ title: 'Organizer', items: organizer });
+  if (opts.isOrganizer) {
+    sections.push({ title: 'Organizer', items: organizer });
+  } else if (opts.canBeOrganizer) {
+    sections.push({
+      title: 'Organizer',
+      items: [
+        { icon: '🎟', label: 'Switch to organizer', sub: 'Manage ticketed events', route: 'switch:ORGANIZER' },
+      ],
+    });
+  }
 
   sections.push({ title: 'Account', items: account });
   return sections;
 }
 
 export default function Profile() {
-  const { user, logout, loadProfile, activeRole } = useUser();
+  const { user, logout, loadProfile, activeRole, switchRole } = useUser();
   // The plan drives what the account can do, so it belongs on the profile
   // rather than only behind Plan & Billing.
   const { data: mySubscription } = useMySubscription(user.isLoggedIn);
@@ -134,9 +160,32 @@ export default function Profile() {
         isArtist: activeRole === 'ARTIST',
         isPerformer: activeRole === 'ARTIST' && !!user.isPerformer,
         isOrganizer: activeRole === 'ORGANIZER',
+        // `user.role` is the account role, which the session may not be using.
+        canBeArtist: user.role === 'ARTIST' && activeRole !== 'ARTIST',
+        canBeOrganizer: user.role === 'ORGANIZER' && activeRole !== 'ORGANIZER',
       }),
-    [activeRole, user.isPerformer],
+    [activeRole, user.isPerformer, user.role],
   );
+
+  const [switching, setSwitching] = useState(false);
+
+  /** Menu rows either navigate or change the session's active role. */
+  const handleMenuPress = useCallback(async (route: string) => {
+    if (!route.startsWith('switch:')) {
+      router.push(route as any);
+      return;
+    }
+    if (switching) return;
+    const target = route.slice('switch:'.length) as 'ARTIST' | 'ORGANIZER';
+    setSwitching(true);
+    try {
+      await switchRole(target);
+    } catch (e: any) {
+      Alert.alert('Could not switch', e?.message ?? 'Please try again.');
+    } finally {
+      setSwitching(false);
+    }
+  }, [switchRole, switching]);
 
   const roleText = useMemo(() => {
     const map: Record<string, string> = { ARTIST: 'Artist', BUYER: 'Buyer', ORGANIZER: 'Organizer', ADMIN: 'Admin' };
@@ -268,7 +317,7 @@ export default function Profile() {
                   <TouchableOpacity
                     key={item.label}
                     style={styles.menuItem}
-                    onPress={() => router.push(item.route as any)}
+                    onPress={() => handleMenuPress(item.route)}
                   >
                     <Text style={styles.menuIcon}>{item.icon}</Text>
                     <View style={styles.menuText}>

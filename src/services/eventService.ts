@@ -44,11 +44,33 @@ interface EventListResponse {
 
 export interface ApiTicketTier {
   id: string;
-  name: string;
+  /** The API's field is `tierName`; `name` is not sent and was always blank. */
+  tierName?: string;
+  name?: string;
   price: number;
   description?: string;
   available?: number;
+  availableSeats?: number;
   capacity?: number;
+  totalSeats?: number;
+}
+
+/** Display label for a tier, whichever field the endpoint used. */
+export function tierLabel(t: ApiTicketTier): string {
+  return t.tierName ?? t.name ?? 'General admission';
+}
+
+/**
+ * The tier a seat belongs to.
+ *
+ * The server derives this from the seat number — `Early Bird Pass-A1` is in
+ * the "Early Bird Pass" tier — and prices each seat by its own tier. Pricing
+ * every seat at the selected tier's rate, as this screen used to, overstated
+ * the total whenever seats from different tiers were mixed.
+ */
+export function seatTierName(seatNumber: string): string {
+  const parts = String(seatNumber ?? '').split('-');
+  return parts.length > 1 ? parts[0] : 'Normal';
 }
 
 export interface ApiEventDetail extends ApiEvent {

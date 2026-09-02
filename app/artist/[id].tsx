@@ -59,6 +59,20 @@ export default function ArtistProfile() {
     }
   }, [profile, following, followLoading]);
 
+  // Only fetched when the tab is opened; most visitors never open it.
+  useEffect(() => {
+    if (tab !== 'events' || !id || artistEvents.length > 0) return;
+    setEventsLoading(true);
+    EventService.getEvents({ artistId: String(id), limit: 20 })
+      .then(setArtistEvents)
+      .catch(() => setArtistEvents([]))
+      .finally(() => setEventsLoading(false));
+  }, [tab, id]);
+
+  // Every hook must run on every render. This early return used to sit above
+  // the events effect, so the loading render registered one fewer hook than
+  // the next and React threw "Rendered more hooks than during the previous
+  // render" — the app closed on opening an artist from search.
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.bg, justifyContent: 'center', alignItems: 'center' }}>
@@ -78,16 +92,6 @@ export default function ArtistProfile() {
   const totalLikes  = profile?.totalLikes      ?? 0;
 
   const coverImg    = posts[0]?.imageUrls?.[0] ?? posts[0]?.mediaUrls?.[0] ?? PLACEHOLDER_COVER;
-
-  // Only fetched when the tab is opened; most visitors never open it.
-  useEffect(() => {
-    if (tab !== 'events' || !id || artistEvents.length > 0) return;
-    setEventsLoading(true);
-    EventService.getEvents({ artistId: String(id), limit: 20 })
-      .then(setArtistEvents)
-      .catch(() => setArtistEvents([]))
-      .finally(() => setEventsLoading(false));
-  }, [tab, id]);
 
   const fmtCount = (n: number) =>
     n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
