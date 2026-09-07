@@ -110,8 +110,19 @@ function toList(res: any): any[] {
 }
 
 export const BookingService = {
-  async getServiceSlots(serviceId: string): Promise<ServiceSlot[]> {
-    const res = await fetchApi<any>(`/artist-services/${serviceId}/slots`, { requiresAuth: false });
+  /**
+   * Slots the artist has opened on a given day.
+   *
+   * `?date=YYYY-MM-DD` is required — without it the endpoint answers 400
+   * ("Query parameter ?date=YYYY-MM-DD is required."), which the screen read
+   * as "no slots". Nothing could then be selected, and `slotId` is required
+   * to book, so every booking request failed.
+   */
+  async getServiceSlots(serviceId: string, date: string): Promise<ServiceSlot[]> {
+    const res = await fetchApi<any>(
+      `/artist-services/${serviceId}/slots?date=${encodeURIComponent(date)}`,
+      { requiresAuth: false },
+    );
     return toList(res).map(normalizeSlot);
   },
 

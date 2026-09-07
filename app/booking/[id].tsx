@@ -6,7 +6,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Colors, Typography, Spacing, Radius } from '@/constants/theme';
 import { GoldButton } from '@/components/ui/GoldButton';
 import { StarRow } from '@/components/ui/StarRow';
-import { ArtistServiceApi } from '@/services/artistService';
+import { ArtistServiceApi, type ServiceListing } from '@/services/artistService';
 import {
   BookingService, type ServiceSlot, type ServiceBookingResult,
 } from '@/services/bookingService';
@@ -14,6 +14,7 @@ import { useRazorpayPayment } from '@/payments/useRazorpayPayment';
 import { toPaise } from '@/payments/razorpay';
 import { useUser } from '@/context/AppContext';
 import { Performer } from '@/types';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -23,17 +24,31 @@ function formatSlotDate(iso: string): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
+/** Local-time YYYY-MM-DD; toISOString() would shift the day. */
+const toYMD = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export default function BookDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useUser();
 
-  const [performer, setPerformer] = useState<(Performer & { serviceId: string }) | null>(null);
+  const [performer, setPerformer] = useState<ServiceListing | null>(null);
   const [loading, setLoading]     = useState(true);
 
   // Slots are the artist's actual availability. The date and time used to be
   // free-text fields defaulting to '6:00 PM' and '3 hrs', so a booking could
   // be requested for a time the artist had never offered.
   const [slots, setSlots]         = useState<ServiceSlot[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [bookingDate, setBookingDate] = useState(() => {
+    // Default to tomorrow: most services require a day's notice, and today
+    // is often already past the artist's opened slots.
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [slotId, setSlotId]       = useState<string | null>(null);
   const [venue, setVenue]         = useState('');
   const [notes, setNotes]         = useState('');
@@ -41,17 +56,29 @@ export default function BookDetail() {
   useEffect(() => {
     if (!id) return;
     ArtistServiceApi.getServiceById(String(id))
-      .then(async s => {
-        if (!s) return;
-        setPerformer(s);
-        const list = await BookingService.getServiceSlots(s.serviceId).catch(() => []);
+      .then(s => { if (s) setPerformer(s); })
+      .catch(err => console.warn('[BookDetail] load error:', err))
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  // Slots are per day — the endpoint requires a date — so they reload
+  // whenever the chosen day changes.
+  useEffect(() => {
+    if (!performer?.serviceId) return;
+    let cancelled = false;
+    setSlotsLoading(true);
+    setSlotId(null);
+    BookingService.getServiceSlots(performer.serviceId, toYMD(bookingDate))
+      .then(list => {
+        if (cancelled) return;
         setSlots(list);
         const firstOpen = list.find(sl => !sl.isFull);
         if (firstOpen) setSlotId(firstOpen.id);
       })
-      .catch(err => console.warn('[BookDetail] load error:', err))
-      .finally(() => setLoading(false));
-  }, [id]);
+      .catch(() => { if (!cancelled) setSlots([]); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [performer?.serviceId, bookingDate]);
 
   const selectedSlot = useMemo(() => slots.find(s => s.id === slotId) ?? null, [slots, slotId]);
 
@@ -164,19 +191,96 @@ export default function BookDetail() {
             <Image source={{ uri: performer.img }} style={styles.performerAvatar} contentFit="cover" />
             <View style={{ flex: 1 }}>
               <Text style={styles.performerName}>{performer.name}</Text>
+              {!!performer.artistUsername && (
+                <Text style={styles.performerHandle}>@{performer.artistUsername}</Text>
+              )}
               <StarRow rating={performer.rating} count={performer.reviews} />
             </View>
             <Text style={styles.price}>{performer.price}</Text>
           </View>
 
+          {/* The service's own detail. All of this was fetched and discarded,
+              so the screen could show little more than a name. */}
+          {!!performer.title && <Text style={styles.serviceTitle}>{performer.title}</Text>}
+          {!!performer.description && (
+            <Text style={styles.serviceDesc}>{performer.description}</Text>
+          )}
+
+          {(performer.cities?.length || performer.minBookingHours || performer.advanceNoticeDays) && (
+            <View style={styles.factGrid}>
+              {!!performer.cities?.length && (
+                <View style={styles.fact}>
+                  <Text style={styles.factLabel}>SERVES</Text>
+                  <Text style={styles.factValue} numberOfLines={2}>{performer.cities.join(', ')}</Text>
+                </View>
+              )}
+              {!!performer.minBookingHours && (
+                <View style={styles.fact}>
+                  <Text style={styles.factLabel}>BOOKING LENGTH</Text>
+                  <Text style={styles.factValue}>
+                    {performer.minBookingHours}
+                    {performer.maxBookingHours ? `–${performer.maxBookingHours}` : '+'} hours
+                  </Text>
+                </View>
+              )}
+              {!!performer.advanceNoticeDays && (
+                <View style={styles.fact}>
+                  <Text style={styles.factLabel}>NOTICE</Text>
+                  <Text style={styles.factValue}>
+                    {performer.advanceNoticeDays} day{performer.advanceNoticeDays === 1 ? '' : 's'} ahead
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {!!performer.sampleWorkUrls?.length && (
+            <>
+              <Text style={styles.sectionTitle}>Sample Work</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Spacing.md }}>
+                <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+                  {performer.sampleWorkUrls.slice(0, 8).map((u, i) => (
+                    <Image key={i} source={{ uri: u }} style={styles.sampleImg} contentFit="cover" />
+                  ))}
+                </View>
+              </ScrollView>
+            </>
+          )}
+
           <Text style={styles.sectionTitle}>Event Details</Text>
 
-          {/* Availability */}
+          {/* Availability — slots are published per day, so the date leads. */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Date</Text>
+            <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)}>
+              <Text style={styles.dateBtnText}>
+                {bookingDate.toLocaleDateString('en-IN', {
+                  weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+                })}
+              </Text>
+              <Text style={styles.dateBtnHint}>Change</Text>
+            </TouchableOpacity>
+          </View>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={bookingDate}
+              mode="date"
+              minimumDate={new Date()}
+              onChange={(e: any, picked?: Date) => {
+                setShowDatePicker(false);
+                if (e?.type !== 'dismissed' && picked) setBookingDate(picked);
+              }}
+            />
+          )}
+
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Available Slots</Text>
-            {slots.length === 0 ? (
+            {slotsLoading ? (
+              <ActivityIndicator color={Colors.gold} style={{ alignSelf: 'flex-start' }} />
+            ) : slots.length === 0 ? (
               <Text style={styles.noSlots}>
-                This artist has not published any availability yet. Try again later or message them.
+                No slots on this date. Try another day, or message the artist.
               </Text>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -275,6 +379,17 @@ const styles = StyleSheet.create({
   performerAvatar: { width: 52, height: 52, borderRadius: 26, borderWidth: 2, borderColor: Colors.gold },
   performerName: { ...Typography.heading, fontSize: 18, marginBottom: 4 },
   price: { ...Typography.display, fontSize: 18, color: Colors.gold },
+  performerHandle: { ...Typography.caption, fontSize: 12, color: Colors.creamDim, marginTop: 1 },
+  serviceTitle: { ...Typography.heading, fontSize: 18, marginTop: Spacing.md },
+  serviceDesc: { ...Typography.body, fontSize: 14, color: Colors.creamDim, lineHeight: 20, marginTop: 4 },
+  factGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginTop: Spacing.md },
+  fact: {
+    flexGrow: 1, minWidth: '30%', backgroundColor: Colors.bgCard,
+    borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.md, padding: Spacing.sm,
+  },
+  factLabel: { ...Typography.label, fontSize: 9, color: Colors.creamFaint },
+  factValue: { ...Typography.bodySemibold, fontSize: 13, marginTop: 3 },
+  sampleImg: { width: 120, height: 90, borderRadius: Radius.md, backgroundColor: Colors.bgInput },
   sectionTitle: { ...Typography.heading, fontSize: 20, marginTop: Spacing.sm },
   slotChip: {
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.md,
@@ -285,6 +400,13 @@ const styles = StyleSheet.create({
   slotDate: { ...Typography.bodySemibold, fontSize: 13 },
   slotTime: { ...Typography.caption, fontSize: 11, marginTop: 2 },
   slotFull: { ...Typography.caption, fontSize: 10, color: Colors.error, marginTop: 2 },
+  dateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.bgInput, borderWidth: 1, borderColor: Colors.border,
+    borderRadius: Radius.md, paddingHorizontal: Spacing.md, paddingVertical: 12,
+  },
+  dateBtnText: { ...Typography.body, fontSize: 15, color: Colors.cream },
+  dateBtnHint: { ...Typography.caption, fontSize: 12, color: Colors.gold },
   noSlots: { ...Typography.body, fontSize: 13, color: Colors.creamDim, lineHeight: 19 },
   fieldGroup: { gap: Spacing.xs },
   fieldRow: { flexDirection: 'row', gap: Spacing.sm },

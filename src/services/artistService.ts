@@ -1,4 +1,5 @@
 import { fetchApi, MEDIA_BASE_URL } from './api';
+import { resolveImageUrl } from '@/utils/imageUrl';
 import { Performer } from '@/types';
 import { ApiResponse } from '@/types';
 
@@ -61,7 +62,26 @@ function resolvePrice(s: ApiArtistService): string {
   return type === 'FIXED' ? amount : `${amount}+`;
 }
 
-function normalizeService(s: ApiArtistService, idx: number): Performer & { serviceId: string } {
+/** A performer card plus the service detail the booking screen needs. */
+export interface ServiceListing extends Performer {
+  serviceId: string;
+  title?: string;
+  description?: string;
+  artistUsername?: string;
+  artistAvatar?: string;
+  coverImages?: string[];
+  sampleWorkUrls?: string[];
+  cities?: string[];
+  categories?: string[];
+  venueAddress?: string;
+  minBookingHours?: number;
+  maxBookingHours?: number;
+  advanceNoticeDays?: number;
+  pricingType?: string;
+  currency?: string;
+}
+
+function normalizeService(s: ApiArtistService, idx: number): ServiceListing {
   const name = s.artist?.name ?? s.artist?.username ?? s.title ?? 'Artist';
   return {
     serviceId: s.id,
@@ -72,6 +92,23 @@ function normalizeService(s: ApiArtistService, idx: number): Performer & { servi
     rating:  s.rating ?? 4.5,
     reviews: s.reviewsCount ?? 0,
     img:     resolveServiceImage(s, name),
+
+    // Everything below was dropped, so the booking screen could show little
+    // more than a name — "the artist profile shows only the username".
+    title:            s.title ?? undefined,
+    description:      (s as any).description ?? undefined,
+    artistUsername:   s.artist?.username ?? undefined,
+    artistAvatar:     resolveImageUrl((s as any).artist?.picture) || undefined,
+    coverImages:      ((s as any).coverImages ?? []).map((u: string) => resolveImageUrl(u)).filter(Boolean),
+    sampleWorkUrls:   ((s as any).sampleWorkUrls ?? []).map((u: string) => resolveImageUrl(u)).filter(Boolean),
+    cities:           ((s as any).cities ?? []).map((c: any) => c?.name ?? c).filter(Boolean),
+    categories:       (s.categories ?? []).map((c: any) => c?.name ?? c).filter(Boolean),
+    venueAddress:     (s as any).venueAddress ?? undefined,
+    minBookingHours:  (s as any).minBookingHours ?? undefined,
+    maxBookingHours:  (s as any).maxBookingHours ?? undefined,
+    advanceNoticeDays:(s as any).advanceNoticeDays ?? undefined,
+    pricingType:      (s as any).pricingType ?? undefined,
+    currency:         (s as any).currency ?? undefined,
   };
 }
 
@@ -117,7 +154,7 @@ export const ArtistServiceApi = {
     categoryId?: string;
     page?: number;
     limit?: number;
-  }): Promise<Array<Performer & { serviceId: string }>> {
+  }): Promise<ServiceListing[]> {
     const q = new URLSearchParams();
     if (params?.page)                                               q.append('page', String(params.page));
     if (params?.limit)                                              q.append('limit', String(params.limit));
@@ -138,7 +175,7 @@ export const ArtistServiceApi = {
     return list.map(normalizeService);
   },
 
-  async getServiceById(id: string): Promise<(Performer & { serviceId: string }) | null> {
+  async getServiceById(id: string): Promise<ServiceListing | null> {
     try {
       const res = await fetchApi<ApiResponse<ApiArtistService>>(`/artist-services/${id}`, {
         requiresAuth: false,
