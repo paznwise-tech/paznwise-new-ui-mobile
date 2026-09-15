@@ -1,4 +1,5 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi} from './api';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
 /**
  * Unified search — `GET /search?q=`, public.
@@ -82,9 +83,7 @@ export interface SearchResponse {
 
 /** Resolves a bare S3 key to an absolute URL; passes through full URLs. */
 export function resolveMedia(url: string | null | undefined): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url) || undefined;
 }
 
 export const SearchService = {

@@ -1,5 +1,6 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi} from './api';
 import { apiBaseUrl } from '@/config/env';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
 /**
  * Performer service bookings — src/artistService/artistService.routes.js.
@@ -54,9 +55,7 @@ export interface ServiceBookingResult extends ServiceBooking {
 }
 
 export function resolveImage(url: string | null | undefined): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url) || undefined;
 }
 
 function normalizeSlot(s: any): ServiceSlot {

@@ -1,4 +1,4 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi} from './api';
 import { resolveImageUrl } from '@/utils/imageUrl';
 import { Performer } from '@/types';
 import { ApiResponse } from '@/types';
@@ -35,8 +35,7 @@ interface ServiceListResponse {
 const VIDEO_HOST_RE = /(youtube\.com|youtu\.be|vimeo\.com|\.mp4|\.mov|\.webm)/i;
 
 function toAbsolute(url: string): string {
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url) || url;
 }
 
 // Distinct initials-avatar per performer when no real image exists —

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import { Image } from 'expo-image';
+import { RemoteImage } from '@/components/ui/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Radius, Spacing } from '@/constants/theme';
 import { Event } from '@/types';
@@ -23,7 +23,7 @@ export const EventCard = React.memo(function EventCard({ item, onPress, horizont
       activeOpacity={0.85}
     >
       <View style={styles.imageWrap}>
-        <Image source={{ uri: item.img }} style={styles.image} contentFit="cover" transition={300} />
+        <RemoteImage uri={item.img} style={styles.image} contentFit="cover" transition={300} />
         <LinearGradient colors={['transparent', 'rgba(13,27,42,0.95)']} style={styles.gradient} />
         <View style={styles.badge}>
           <Text style={styles.badgeText}>{item.category}</Text>

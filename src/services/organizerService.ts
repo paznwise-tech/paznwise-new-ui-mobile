@@ -1,4 +1,5 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi} from './api';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
 /**
  * Organizer events and ticketing — src/organizerEvents/organizerEvents.routes.js.
@@ -70,9 +71,7 @@ export interface NewTier {
 export type TicketPaymentMethod = 'CARD' | 'UPI' | 'WALLET' | 'NET_BANKING';
 
 function resolveImage(url: string | null | undefined): string | null {
-  if (!url) return null;
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url) || null;
 }
 
 function toList(res: any): any[] {

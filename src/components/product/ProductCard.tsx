@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
-import { Image } from 'expo-image';
+import { RemoteImage } from '@/components/ui/RemoteImage';
 import { Colors, Typography, Spacing, Radius, Shadow } from '@/constants/theme';
 import { ProductResponse } from '@/types';
 import { router } from 'expo-router';
@@ -37,9 +37,9 @@ export default function ProductCard({ product, style, onPress }: ProductCardProp
   return (
     <TouchableOpacity style={[styles.card, style]} onPress={handlePress} activeOpacity={0.8}>
       <View style={styles.imageContainer}>
-        <Image 
-          source={{ uri: coverImage }} 
-          style={styles.image} 
+        <RemoteImage
+          uri={coverImage}
+          style={styles.image}
           contentFit="cover"
           transition={200}
         />

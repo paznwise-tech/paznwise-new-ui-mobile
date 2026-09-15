@@ -1,10 +1,9 @@
-import { fetchApi, MEDIA_BASE_URL } from './api';
+import { fetchApi} from './api';
 import { ApiResponse } from '@/types';
+import { resolveImageUrl } from '@/utils/imageUrl';
 
 function resolveAvatarUrl(url: string | null | undefined): string | undefined {
-  if (!url) return undefined;
-  if (url.startsWith('http')) return url;
-  return `${MEDIA_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  return resolveImageUrl(url) || undefined;
 }
 
 export interface PublicUser {
