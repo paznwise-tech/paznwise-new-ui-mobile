@@ -20,15 +20,52 @@ const S3_BASE = mediaBaseUrl.replace(/\/$/, '');
 const API_HOST = apiBaseUrl.replace(/\/api$/, '').replace(/\/$/, '');
 
 /**
- * Inline placeholder for a missing image: a framed-picture glyph as an SVG
- * data URI, the same asset the web app uses.
+ * Inline placeholder for a missing image.
  *
- * Deliberately not a remote URL. The previous placeholder pointed at
- * via.placeholder.com, which no longer resolves at all, so every missing
- * image hung until the network timed out instead of showing anything.
+ * A PNG, not the SVG data URI the web app uses: Android decodes images
+ * through Glide, which does not handle `data:image/svg+xml` sources, so an
+ * SVG placeholder renders as nothing — indistinguishable from the broken
+ * images it is meant to stand in for.
+ *
+ * Deliberately not a remote URL either. The placeholder before this one
+ * pointed at via.placeholder.com, which no longer resolves at all, so every
+ * missing image hung until the network timed out.
  */
 export const DEFAULT_IMAGE =
-  'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODgiIGhlaWdodD0iODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgc3Ryb2tlPSIjMDAwIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBvcGFjaXR5PSIuMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIzLjciPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9IjU2IiBoZWlnaHQ9IjU2IiByeD0iNiIvPjxwYXRoIGQ9Im0xNiA1OCAxNi0xOCAzMiAzMiIvPjxjaXJjbGUgY3g9IjUzIiBjeT0iMzUiIHI9IjciLz48L3N2Zz4KCg==';
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR42mOQ0nUgCTGMahjVMHw1AAChIocBYn1EZwAAAABJRU5ErkJggg==';
+
+/**
+ * Pulls a usable image value out of whatever the API returned.
+ *
+ * Image fields are not consistently strings. `event.eventImages` is an array
+ * of rows — `{ id, eventId, imageUrl, sortOrder, url }` — so indexing it gave
+ * an object, `resolveImageUrl` rejected the non-string, and the event fell
+ * back to a stock photo even though a real upload existed. Both `url` (already
+ * absolute) and `imageUrl` (a bare S3 key) appear on those rows.
+ */
+export function pickImageValue(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const found = pickImageValue(entry);
+      if (found) return found;
+    }
+    return '';
+  }
+
+  if (typeof value === 'object') {
+    const row = value as Record<string, unknown>;
+    // `url` first: it is already absolute where both are present.
+    for (const key of ['url', 'imageUrl', 'src', 'uri', 'image', 'thumbnailUrl', 'path', 'key']) {
+      const found = pickImageValue(row[key]);
+      if (found) return found;
+    }
+  }
+
+  return '';
+}
 
 /**
  * Turns whatever the API returned into a URL that actually loads.
@@ -44,9 +81,11 @@ export const DEFAULT_IMAGE =
  * Returns '' for empty input so callers can decide on their own fallback.
  */
 export function resolveImageUrl(url?: unknown): string {
-  if (!url || typeof url !== 'string') return '';
+  // Accepts objects and arrays as well as strings — see `pickImageValue`.
+  const raw = pickImageValue(url);
+  if (!raw) return '';
 
-  let clean = url.trim();
+  let clean = raw.trim();
   if (!clean) return '';
 
   // A YouTube link has no image of its own; use its poster frame.
@@ -121,12 +160,9 @@ export function resolveImageOrDefault(url?: unknown): string {
 export function getProductImageUrl(product: any): string {
   if (!product) return DEFAULT_IMAGE;
 
-  const first = (v: any): unknown =>
-    Array.isArray(v) ? (v[0]?.url ?? v[0]) : (v?.url ?? v);
-
   const candidates = [
-    first(product.images),
-    first(product.productImages),
+    product.images,
+    product.productImages,
     product.thumbnailUrl,
     product.image,
     product.img,
