@@ -1,6 +1,8 @@
 import { fetchApi} from './api';
 import { ApiResponse } from '@/types';
 import { resolveImageUrl } from '@/utils/imageUrl';
+import { AuthStorage } from './authStorage';
+import { clearAuthUserIdCache } from './currentUser';
 
 function resolveAvatarUrl(url: string | null | undefined): string | undefined {
   return resolveImageUrl(url) || undefined;
@@ -166,11 +168,22 @@ export const UserService = {
       form.append('avatar', { uri: data.avatarUri, type: data.avatarMimeType ?? 'image/jpeg', name: filename } as any);
     }
 
-    const res = await fetchApi<ApiResponse<ProfileApiData>>('/user/profile', {
+    const res = await fetchApi<ApiResponse<ProfileApiData> & { token?: string }>('/user/profile', {
       method: 'PUT',
       requiresAuth: true,
       body: form,
     });
+
+    // Changing role bumps the user's `tokenVersion` server-side, which
+    // invalidates the access token this request was made with, and the new
+    // one comes back on the response. Ignoring it left the app holding a
+    // token the server had just revoked: every later call failed and the
+    // role never appeared to change.
+    if (res.token) {
+      await AuthStorage.setAccessToken(res.token);
+      clearAuthUserIdCache();
+    }
+
     return normalizeProfile(res.data);
   },
 

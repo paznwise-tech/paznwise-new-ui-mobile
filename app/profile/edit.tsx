@@ -20,7 +20,7 @@ const ROLE_LABELS: Record<Role, string> = {
 };
 
 export default function EditProfile() {
-  const { user, updateUserProfile, logout } = useUser();
+  const { user, updateUserProfile, logout, loadProfile } = useUser();
 
   const [name, setName] = useState(user.name);
   const [username, setUsername] = useState(user.username);
@@ -95,13 +95,17 @@ export default function EditProfile() {
         ...(avatarUri ? { avatarUri, avatarMimeType: avatarMime } : {}),
       });
       updateUserProfile(updated);
+      // A role change rotates the access token, and `activeRole` — which
+      // gates every supply-side screen — is read from it. Reload so the app
+      // is not still acting as the previous role.
+      await loadProfile().catch(() => {});
       router.back();
     } catch (err: any) {
       setError(err?.data?.message ?? err?.message ?? 'Failed to save profile.');
     } finally {
       setSaving(false);
     }
-  }, [name, username, bio, role, phone, cityId, password, confirm, avatarUri, avatarMime, updateUserProfile]);
+  }, [name, username, bio, role, phone, cityId, password, confirm, avatarUri, avatarMime, updateUserProfile, loadProfile]);
 
   const handleDelete = useCallback(() => {
     Alert.alert(

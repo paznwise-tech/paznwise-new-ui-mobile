@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Image } from 'expo-image';
+import { RemoteImage } from '@/components/ui/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Radius, Spacing } from '@/constants/theme';
 import { StarRow } from '@/components/ui/StarRow';
@@ -15,7 +15,7 @@ export const PerformerCard = React.memo(function PerformerCard({ item, onPress }
   return (
     <TouchableOpacity onPress={onPress} style={styles.card} activeOpacity={0.85}>
       <View style={styles.imageWrap}>
-        <Image source={{ uri: item.img }} style={styles.image} contentFit="cover" transition={300} />
+        <RemoteImage uri={item.img} style={styles.image} contentFit="cover" transition={300} />
         <LinearGradient colors={['transparent', 'rgba(13,27,42,0.9)']} style={styles.gradient} />
         <View style={styles.typeTag}>
           <Text style={styles.typeText}>{item.type}</Text>

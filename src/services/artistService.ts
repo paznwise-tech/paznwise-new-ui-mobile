@@ -11,6 +11,7 @@ export interface ApiArtistService {
   currency?: string;
   pricingType?: string;
   sampleWorkUrls?: string[];
+  coverImages?: string[];
   rating?: number | null;
   reviewsCount?: number;
   artist?: {
@@ -45,10 +46,21 @@ function fallbackAvatar(name: string): string {
   return `https://ui-avatars.com/api/?name=${initials}&size=400&background=1C2F45&color=E8C15F&bold=true`;
 }
 
-// Prefer a real sample-work image, then the artist avatar, then category icon.
+/**
+ * Picks the image for a service card.
+ *
+ * `coverImages` comes first and was missing entirely: it is the service's own
+ * cover, it is what the artist uploaded for this listing, and it is set on
+ * almost every service — while `artist.picture` is set on almost none. Without
+ * it every card fell through to the initials avatar.
+ *
+ * Sample work can be a YouTube link, which is a video rather than an image, so
+ * those are skipped here; the booking screen renders them separately.
+ */
 function resolveServiceImage(s: ApiArtistService, name: string): string {
+  const cover = s.coverImages?.find(Boolean);
   const sample = s.sampleWorkUrls?.find(u => u && !VIDEO_HOST_RE.test(u));
-  const src = sample ?? s.artist?.picture ?? s.categories?.[0]?.iconUrl;
+  const src = cover ?? sample ?? s.artist?.picture ?? s.categories?.[0]?.iconUrl;
   return src ? toAbsolute(src) : fallbackAvatar(name);
 }
 

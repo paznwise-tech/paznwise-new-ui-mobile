@@ -73,6 +73,17 @@ export default function BookEventTicket() {
   const seatMapped = seats.length > 0;
   const effectiveQuantity = seatMapped ? selectedSeatIds.length : quantity;
 
+  // Never lets the stepper exceed what is actually left, or the app's own
+  // per-booking cap of 10 — whichever is smaller.
+  const quantityCap = Math.max(
+    0,
+    Math.min(10, selectedTier?.availableSeats ?? 10),
+  );
+
+  useEffect(() => {
+    setQuantity(q => Math.min(q, Math.max(1, quantityCap)));
+  }, [quantityCap]);
+
   /**
    * Priced the way the server prices it: each seat by its own tier, taken
    * from its seat number. Multiplying the selected tier's rate by the seat
@@ -111,13 +122,24 @@ export default function BookEventTicket() {
         try {
           await EventService.lockSeats(slotId, selectedSeatIds);
         } catch (e: any) {
-          const taken: string[] = e?.data?.unavailableSeats ?? [];
+          // The server names the taken seats by their *seat number*
+          // ("Normal-A1"), not by id, but `selectedSeatIds` holds ids.
+          // Filtering the raw list against `taken` never matched anything,
+          // so the taken seat was never actually removed from the
+          // selection — and SeatMap then disables tapping on any seat it
+          // shows as unavailable, so the user could neither keep it nor
+          // remove it. Mapping through the seat number, which is stable
+          // across this request, is what actually clears it.
+          const takenNumbers: string[] = e?.data?.unavailableSeats ?? [];
           if (e?.status === 409) {
-            setSelectedSeatIds(prev => prev.filter(s => !taken.includes(s)));
+            const takenIds = new Set(
+              seats.filter(s => takenNumbers.includes(s.seatNumber)).map(s => s.id),
+            );
+            setSelectedSeatIds(prev => prev.filter(id => !takenIds.has(id)));
             await loadSeats(slotId);
             throw new Error(
-              taken.length
-                ? `${taken.length} of your seats were just taken. They have been removed — please pick again.`
+              takenNumbers.length
+                ? `${takenNumbers.length} of your seats were just taken. They have been removed — please pick again.`
                 : 'Those seats were just taken. Please pick again.',
             );
           }
@@ -177,6 +199,10 @@ export default function BookEventTicket() {
     }
     if (seatMapped && selectedSeatIds.length === 0) {
       Alert.alert('Pick a seat', 'Please select at least one seat.');
+      return;
+    }
+    if (!seatMapped && selectedTier?.availableSeats === 0) {
+      Alert.alert('Sold out', 'This ticket type has no seats left. Please choose another.');
       return;
     }
     pay();
@@ -265,8 +291,13 @@ export default function BookEventTicket() {
                 return (
                   <TouchableOpacity
                     key={tier.id}
-                    style={[styles.tierCard, isSelected && styles.tierCardActive]}
-                    onPress={() => setSelectedTier(tier)}
+                    style={[
+                      styles.tierCard,
+                      isSelected && styles.tierCardActive,
+                      tier.availableSeats === 0 && styles.tierCardDisabled,
+                    ]}
+                    onPress={() => tier.availableSeats !== 0 && setSelectedTier(tier)}
+                    disabled={tier.availableSeats === 0}
                     activeOpacity={0.8}
                   >
                     <View style={[styles.radioOuter, isSelected && styles.radioOuterActive]}>
@@ -275,8 +306,22 @@ export default function BookEventTicket() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.tierName}>{tierLabel(tier)}</Text>
                       {tier.description ? <Text style={styles.tierDesc}>{tier.description}</Text> : null}
-                      {tier.available !== undefined && tier.available <= 10 && (
-                        <Text style={styles.tierAvail}>Only {tier.available} left!</Text>
+                      {/*
+                        The API's field is `availableSeats` (only present on the
+                        enriched slot, not the plain event tier); this checked
+                        `available`, which is never set, so the count never
+                        rendered at all — leaving no way to tell how many seats
+                        were left. Shown whenever the number is known, not only
+                        when scarce, and disables the tier once it sells out.
+                      */}
+                      {tier.availableSeats != null && (
+                        <Text style={[styles.tierAvail, tier.availableSeats === 0 && styles.tierSoldOut]}>
+                          {tier.availableSeats === 0
+                            ? 'Sold out'
+                            : tier.availableSeats <= 10
+                              ? `Only ${tier.availableSeats} left`
+                              : `${tier.availableSeats} available`}
+                        </Text>
                       )}
                     </View>
                     <Text style={styles.tierPrice}>
@@ -353,11 +398,20 @@ export default function BookEventTicket() {
                 <Text style={styles.qtyVal}>{quantity}</Text>
                 <TouchableOpacity
                   style={[styles.qtyBtn, styles.qtyBtnPlus]}
-                  onPress={() => setQuantity(q => Math.min(10, q + 1))}
+                  onPress={() => setQuantity(q => Math.min(quantityCap, q + 1))}
                 >
                   <Text style={[styles.qtyBtnText, { color: Colors.bg }]}>+</Text>
                 </TouchableOpacity>
               </View>
+              {/* Same gap as the tier list: with no seat map, this was the
+                  only place capacity could be shown, and nothing was. */}
+              {selectedTier?.availableSeats != null && (
+                <Text style={styles.seatHint}>
+                  {selectedTier.availableSeats === 0
+                    ? 'Sold out'
+                    : `${selectedTier.availableSeats} ticket${selectedTier.availableSeats === 1 ? '' : 's'} left`}
+                </Text>
+              )}
             </>
           )}
 
@@ -428,6 +482,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border, padding: Spacing.md,
   },
   tierCardActive: { borderColor: Colors.gold, backgroundColor: Colors.gold + '11' },
+  tierCardDisabled: { opacity: 0.45 },
   radioOuter: {
     width: 20, height: 20, borderRadius: 10,
     borderWidth: 2, borderColor: Colors.border,
@@ -438,6 +493,7 @@ const styles = StyleSheet.create({
   tierName: { ...Typography.bodySemibold, fontSize: 15 },
   tierDesc: { ...Typography.caption, fontSize: 12, marginTop: 2 },
   tierAvail: { ...Typography.label, fontSize: 9, color: Colors.warning, marginTop: 4 },
+  tierSoldOut: { color: Colors.error },
   tierPrice: { ...Typography.display, fontSize: 18, color: Colors.gold },
   freeNotice: {
     backgroundColor: Colors.success + '22', borderWidth: 1, borderColor: Colors.success,
